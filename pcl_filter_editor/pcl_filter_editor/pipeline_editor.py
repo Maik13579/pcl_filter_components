@@ -1005,7 +1005,9 @@ class PipelineEditor(Plugin):
         if item is None:
             return None
         parent = item.parentItem()
-        return parent if isinstance(parent, NodeItem) else None
+        if not isinstance(parent, NodeItem):
+            return None
+        return parent if item in {parent.input_port, parent.output_port} else None
 
     def _node_item_for_graphics_item(self, item) -> NodeItem | None:
         while item is not None:
