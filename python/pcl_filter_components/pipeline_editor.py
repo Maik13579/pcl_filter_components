@@ -98,7 +98,7 @@ class EdgeItem(QGraphicsLineItem):
         pass
 
     def _label_text(self) -> str:
-        return self.edge.topic or f"/pcl_pipeline/{self.edge.source.node}_to_{self.edge.target.node}"
+        return self.edge.topic or f"~/{self.edge.source.node}-{self.edge.target.node}"
 
     def _edge_type_text(self) -> str:
         source_type = self.source.editor._edge_type(self.source.node, True, self.edge.source.port)
@@ -196,9 +196,11 @@ class NodeItem(QGraphicsRectItem):
         width = self.rect().width()
         if self.editor.top_down_mode:
             center_x = 28 if self.node.type == "topic" else width / 2.0
+            if self.node.type == "topic":
+                return QPointF(center_x - 6, 0), QPointF(center_x - 6, 56)
             return QPointF(center_x - 6, -6), QPointF(center_x - 6, 62)
         if self.node.type == "topic":
-            return QPointF(-6, 28), QPointF(46, 28)
+            return QPointF(0, 28), QPointF(40, 28)
         return QPointF(-6, 28), QPointF(width - 6, 28)
 
     def _optional_output_port_position(self) -> QPointF:
@@ -710,7 +712,9 @@ class PipelineEditor(Plugin):
             False,
             target_port,
         )
-        topic_name = self._unique_topic(f"/pcl_pipeline/{source.node.id}_to_{target.node.id}")
+        topic_name = self._unique_topic(
+            f"~/{self._topic_name_part(source.node)}-{self._topic_name_part(target.node)}"
+        )
         position = {
             "x": (float(source.pos().x()) + float(target.pos().x())) / 2.0,
             "y": (float(source.pos().y()) + float(target.pos().y())) / 2.0,
@@ -750,6 +754,11 @@ class PipelineEditor(Plugin):
         while f"{base}_{index}" in existing:
             index += 1
         return f"{base}_{index}"
+
+    def _topic_name_part(self, node: Node) -> str:
+        name = node.name or node.id
+        name = name.removeprefix("~/").strip("/")
+        return name.replace("/", "_") or "node"
 
     def _topic_type_is_compatible(self, topic: str, topic_type: str, edge_to_ignore: Edge) -> bool:
         for edge in self.graph.edges:
