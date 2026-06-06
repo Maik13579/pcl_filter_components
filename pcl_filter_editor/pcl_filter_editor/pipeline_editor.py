@@ -337,6 +337,7 @@ class PipelineEditor(Plugin):
         self.live_runtime = LivePipelineRuntime()
         self.parameter_discovery = ComponentParameterDiscovery(self.live_runtime)
         self.parameter_descriptions: dict[str, dict[str, str]] = {}
+        self.parameter_defaults_by_component: dict[str, dict[str, object]] = {}
         self.graph = Graph()
         self.last_live_runtime_error = ""
         self.selected_logical_types = {
@@ -649,6 +650,7 @@ class PipelineEditor(Plugin):
     def _component_parameter_metadata(self, export: FilterExport):
         metadata = self.parameter_discovery.parameters_for_component(export.package, export.component_class)
         self.parameter_descriptions[export.component_class] = metadata.descriptions
+        self.parameter_defaults_by_component[self._component_cache_key(export.package, export.filter, export.component_class)] = metadata.defaults
         return metadata
 
     def _refresh_filter_parameters_for_dialog(self, node: Node) -> None:
@@ -660,6 +662,7 @@ class PipelineEditor(Plugin):
             )
             node.parameters = metadata.defaults
             self.parameter_descriptions[node.component_class] = metadata.descriptions
+            self.parameter_defaults_by_component[self._component_cache_key(node.package, node.filter, node.component_class)] = metadata.defaults
             return
         export = FilterExport(
             package=node.package,
@@ -669,6 +672,11 @@ class PipelineEditor(Plugin):
             output_type=node.output_type,
         )
         metadata = self._component_parameter_metadata(export)
+        node.parameters = {
+            key: value
+            for key, value in node.parameters.items()
+            if key in metadata.defaults
+        }
         for key, value in metadata.defaults.items():
             node.parameters.setdefault(key, value)
 
@@ -928,6 +936,9 @@ class PipelineEditor(Plugin):
             self.status.setText("Connection canceled.")
             return
         target_port = resolved_target_port
+        if source.node.id == target.node.id:
+            QMessageBox.warning(self.widget, "Connect", "Cannot connect a node to itself.")
+            return
         if source.node.type != "topic" and target.node.type != "topic":
             topic = self._create_topic_between(source, target, source_port, target_port)
             self._connect_nodes(source, topic, source_port, "in")
@@ -935,9 +946,6 @@ class PipelineEditor(Plugin):
             return
         if source.node.type == "topic" and target.node.type == "topic":
             QMessageBox.warning(self.widget, "Connect", "Connect through one topic node.")
-            return
-        if source.node.id == target.node.id:
-            QMessageBox.warning(self.widget, "Connect", "Cannot connect a node to itself.")
             return
         source_type = self._edge_type(source.node, True, source_port)
         target_type = self._edge_type(target.node, False, target_port)
@@ -1208,6 +1216,9 @@ class PipelineEditor(Plugin):
         self.connection_source_port = "out"
         node_item = self._port_owner(clicked_item) or self._node_item_for_graphics_item(clicked_item)
         if node_item is None:
+            self.status.setText("Connection canceled.")
+            return True
+        if node_item.node.id == source.node.id:
             self.status.setText("Connection canceled.")
             return True
         if node_item.node.type == "filter" and clicked_item != node_item.input_port and not self.available_input_ports(node_item.node):
@@ -1659,6 +1670,7 @@ class PipelineEditor(Plugin):
         return specs
 
     def _live_parameters_for_node(self, node: Node) -> dict[str, object]:
+        self._sanitize_filter_parameters(node)
         parameters = dict(node.parameters)
         for port, _stream_type, _label in self._port_options(node, False):
             topic = self._connected_topic(node, port, False)
@@ -1675,8 +1687,51 @@ class PipelineEditor(Plugin):
             for key, value in qos.items():
                 parameters[f"outputs.{port}.qos.{key}"] = value
         for key, value in node.sync.items():
-            parameters[f"sync.{key}"] = value
+            if self._filter_has_multiple_inputs(node):
+                parameters[f"sync.{key}"] = value
         return parameters
+
+    def _sanitize_filter_parameters(self, node: Node) -> None:
+        if node.type != "filter":
+            return
+        self._migrate_legacy_sync_parameters(node)
+        if not self._filter_has_multiple_inputs(node):
+            node.sync = {}
+        defaults = self._declared_filter_parameter_defaults(node)
+        node.parameters = {
+            key: value
+            for key, value in node.parameters.items()
+            if key in defaults
+        }
+
+    def _migrate_legacy_sync_parameters(self, node: Node) -> None:
+        if not self._filter_has_multiple_inputs(node):
+            return
+        for key in ("policy", "queue_size", "slop"):
+            if key in node.parameters:
+                node.sync.setdefault(key, node.parameters.pop(key))
+
+    def _declared_filter_parameter_defaults(self, node: Node) -> dict[str, object]:
+        cache_key = self._component_cache_key(node.package, node.filter, node.component_class)
+        if cache_key in self.parameter_defaults_by_component:
+            return self.parameter_defaults_by_component[cache_key]
+        export = FilterExport(
+            package=node.package,
+            filter=node.filter,
+            component_class=self._component_class_for_node(node),
+            input_type=node.input_type,
+            output_type=node.output_type,
+        )
+        try:
+            return self._component_parameter_metadata(export).defaults
+        except Exception:
+            return dict(node.parameters)
+
+    def _component_class_for_node(self, node: Node) -> str:
+        return node.component_class or f"{node.package}::{node.filter}Component"
+
+    def _component_cache_key(self, package: str, filter_name: str, component_class: str) -> str:
+        return component_class or f"{package}::{filter_name}Component"
 
     def _redraw_node(self, item: NodeItem) -> None:
         node = item.node
@@ -1721,6 +1776,7 @@ class PipelineEditor(Plugin):
             )
             node.parameters = metadata.defaults
             self.parameter_descriptions[node.component_class] = metadata.descriptions
+            self.parameter_defaults_by_component[self._component_cache_key(node.package, node.filter, node.component_class)] = metadata.defaults
 
     def _save(self) -> None:
         self._sync_positions()

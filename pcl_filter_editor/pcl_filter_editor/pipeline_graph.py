@@ -182,6 +182,14 @@ def graph_from_dict(data: dict[str, Any]) -> Graph:
     for item in data.get("nodes", []):
         node_type = item["type"]
         node_id = item.get("id", item.get("name", item.get("topic", "")))
+        parameters = item.get("parameters", {}) or {}
+        sync = item.get("sync", {}) or {}
+        if node_type == "filter":
+            parameters = dict(parameters)
+            sync = dict(sync)
+            for key in ("policy", "queue_size", "slop"):
+                if key in parameters:
+                    sync.setdefault(key, parameters.pop(key))
         graph.nodes.append(
             Node(
                 id=node_id,
@@ -193,11 +201,11 @@ def graph_from_dict(data: dict[str, Any]) -> Graph:
                 input_type=item.get("input_type", ""),
                 output_type=item.get("output_type", ""),
                 topic=item.get("topic", ""),
-                parameters=item.get("parameters", {}) or {},
+                parameters=parameters,
                 qos={},
                 inputs=item.get("inputs", {}) or {},
                 outputs=item.get("outputs", {}) or {},
-                sync=item.get("sync", {}) or {},
+                sync=sync,
                 position=item.get("position", {"x": 0.0, "y": 0.0}) or {"x": 0.0, "y": 0.0},
             )
         )

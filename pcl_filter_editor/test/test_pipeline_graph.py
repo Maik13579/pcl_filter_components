@@ -108,6 +108,34 @@ def test_graph_load_ignores_old_edge_qos() -> None:
     assert loaded.edges[0].qos == {}
 
 
+def test_graph_load_migrates_legacy_sync_parameters() -> None:
+    loaded = graph_from_dict(
+        {
+            "version": 1,
+            "nodes": [
+                {
+                    "type": "filter",
+                    "name": "PointCloudMergerXYZI_1",
+                    "package": "pcl_filter_xyzi",
+                    "filter": "PointCloudMergerXYZI",
+                    "input_type": "PointXYZI,PointXYZI",
+                    "output_type": "PointXYZI",
+                    "parameters": {
+                        "queue_size": 5,
+                        "filter.output_indices": False,
+                    },
+                    "sync": {"policy": "ExactTime"},
+                },
+            ],
+        }
+    )
+
+    assert "queue_size" not in loaded.nodes[0].parameters
+    assert loaded.nodes[0].parameters["filter.output_indices"] is False
+    assert loaded.nodes[0].sync["policy"] == "ExactTime"
+    assert loaded.nodes[0].sync["queue_size"] == 5
+
+
 def test_graph_round_trip_preserves_ros_message_compatibility(tmp_path: Path) -> None:
     graph = Graph(
         nodes=[
