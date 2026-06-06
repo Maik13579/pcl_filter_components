@@ -257,6 +257,7 @@ class PipelineView(QGraphicsView):
         if event.button() == Qt.LeftButton and self.editor.begin_connection_drag(
             self.itemAt(event.pos()),
             self.mapToScene(event.pos()),
+            bool(event.modifiers() & Qt.ShiftModifier),
         ):
             return
         super().mousePressEvent(event)
@@ -935,7 +936,7 @@ class PipelineEditor(Plugin):
             target_port,
         )
         topic_name = self._unique_topic(
-            f"~/{self._topic_name_part(source.node)}-{self._topic_name_part(target.node)}"
+            f"~/{self._topic_name_part(source.node)}_{self._topic_name_part(target.node)}"
         )
         position = {
             "x": (float(source.pos().x()) + float(target.pos().x())) / 2.0,
@@ -956,7 +957,7 @@ class PipelineEditor(Plugin):
     def _create_topic_for_port(self, item: NodeItem, outgoing: bool, port: str) -> NodeItem:
         topic_type = self._edge_type(item.node, outgoing, port)
         direction = "out" if outgoing else "in"
-        topic_name = self._unique_topic(f"~/{self._topic_name_part(item.node)}-{direction}")
+        topic_name = self._unique_topic(f"~/{self._topic_name_part(item.node)}_{direction}")
         x = float(item.pos().x())
         y = float(item.pos().y())
         if self.top_down_mode:
@@ -1026,7 +1027,7 @@ class PipelineEditor(Plugin):
     def _topic_name_part(self, node: Node) -> str:
         name = node.name or node.id
         name = name.removeprefix("~/").strip("/")
-        return name.replace("/", "_") or "node"
+        return name.replace("/", "_").replace("-", "_") or "node"
 
     def _topic_type_is_compatible(self, topic: str, topic_type: str, edge_to_ignore: Edge) -> bool:
         for edge in self.graph.edges:
@@ -1043,10 +1044,11 @@ class PipelineEditor(Plugin):
                 return False
         return True
 
-    def begin_connection_drag(self, clicked_item, scene_pos: QPointF) -> bool:
+    def begin_connection_drag(self, clicked_item, scene_pos: QPointF, allow_node_body: bool = False) -> bool:
         if clicked_item is None:
             return False
-        node_item = self._port_owner(clicked_item) or self._node_item_for_graphics_item(clicked_item)
+        port_owner = self._port_owner(clicked_item)
+        node_item = port_owner or (self._node_item_for_graphics_item(clicked_item) if allow_node_body else None)
         if node_item is None:
             return False
         if node_item.node.type == "filter" and not self.available_output_ports(node_item.node):
@@ -1433,14 +1435,19 @@ class PipelineEditor(Plugin):
             if outgoing and edge.source.node == node.id and self._canonical_output_port(node, edge.source.port) == port:
                 target = nodes_by_id.get(edge.target.node)
                 if target is not None and target.type == "topic":
-                    return target.topic
+                    return self._ros_topic_name(target.topic)
                 continue
             if not outgoing and edge.target.node == node.id and self._canonical_input_port(node, edge.target.port) == port:
                 source = nodes_by_id.get(edge.source.node)
                 if source is not None and source.type == "topic":
-                    return source.topic
+                    return self._ros_topic_name(source.topic)
                 continue
         return ""
+
+    def _ros_topic_name(self, topic: str) -> str:
+        if topic.startswith("~/"):
+            return "~/" + topic[2:].replace("-", "_")
+        return topic.replace("-", "_")
 
     def _collect_port_qos(
         self,
