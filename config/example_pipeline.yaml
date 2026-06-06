@@ -2,8 +2,7 @@ version: 1
 editor:
   orientation: left_right
 nodes:
-  - id: input_1
-    type: input
+  - type: input
     topic: /points/input
     output_type: PointXYZI
     position: {x: 0.0, y: 100.0}
@@ -49,17 +48,16 @@ nodes:
       filter.output_indices: false
       queue_size: 5
     position: {x: 840.0, y: 100.0}
-  - id: output_1
-    type: output
+  - type: output
     topic: /points/output
     input_type: PointXYZI
     position: {x: 1120.0, y: 100.0}
 edges:
-  - from: {node: input_1, port: out}
+  - from: {node: /points/input, port: out}
     to: {node: VoxelGridXYZI_1, port: in}
   - from: {node: VoxelGridXYZI_1, port: out}
     to: {node: /pcl_pipeline/voxel_filtered, port: in}
   - from: {node: /pcl_pipeline/voxel_filtered, port: out}
     to: {node: CropBoxXYZI_1, port: in}
   - from: {node: CropBoxXYZI_1, port: out}
-    to: {node: output_1, port: in}
+    to: {node: /points/output, port: in}

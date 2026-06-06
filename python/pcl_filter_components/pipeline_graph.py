@@ -62,8 +62,6 @@ class Node:
         }
         if self.type == "filter":
             data["name"] = self.name or self.id
-        elif self.type != "topic":
-            data["id"] = self.id
         for key in (
             "name",
             "package",
@@ -117,8 +115,8 @@ class Graph:
                 raise ValueError(f"edge target {edge.target.node} does not exist")
             if edge.source.node == edge.target.node:
                 raise ValueError(f"self edge on {edge.source.node} is invalid")
-            source_type = self._node_type(nodes_by_id[edge.source.node], outgoing=True)
-            target_type = self._node_type(nodes_by_id[edge.target.node], outgoing=False)
+            source_type = self._node_type(nodes_by_id[edge.source.node], outgoing=True, port=edge.source.port)
+            target_type = self._node_type(nodes_by_id[edge.target.node], outgoing=False, port=edge.target.port)
             if type_by_node:
                 source_type = type_by_node.get(edge.source.node, source_type)
                 target_type = type_by_node.get(edge.target.node, target_type)
@@ -127,14 +125,18 @@ class Graph:
                     f"type mismatch: {edge.source.node} produces {source_type}, "
                     f"{edge.target.node} expects {target_type}"
                 )
-        topic_names = [node.topic for node in self.nodes if node.type == "topic" and node.topic]
+        topic_names = [
+            node.topic for node in self.nodes if node.type in {"input", "topic", "output"} and node.topic
+        ]
         if len(topic_names) != len(set(topic_names)):
-            raise ValueError("topic node names must be unique")
+            raise ValueError("topic names must be unique")
 
     @staticmethod
-    def _node_type(node: Node, outgoing: bool) -> str:
+    def _node_type(node: Node, outgoing: bool, port: str = "") -> str:
         if node.type == "topic":
             return node.output_type or node.input_type
+        if outgoing and port in {"indices", "optional_output"}:
+            return node.optional_output_type
         return node.output_type if outgoing else node.input_type
 
     def to_dict(self) -> dict[str, Any]:

@@ -14,7 +14,7 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
         editor={"orientation": "top_down"},
         nodes=[
             Node(
-                id="input_1",
+                id="/points",
                 type="input",
                 topic="/points",
                 output_type="PointXYZI",
@@ -42,12 +42,12 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
                 qos={"depth": 7, "reliability": "reliable"},
                 position={"x": 120.0, "y": 80.0},
             ),
-            Node(id="output_1", type="output", topic="/filtered", input_type="PointXYZI"),
+            Node(id="/filtered", type="output", topic="/filtered", input_type="PointXYZI"),
         ],
         edges=[
-            Edge(PortRef("input_1", "out"), PortRef("VoxelGridXYZI_1", "in")),
+            Edge(PortRef("/points", "out"), PortRef("VoxelGridXYZI_1", "in")),
             Edge(PortRef("VoxelGridXYZI_1", "out"), PortRef("/pcl_pipeline/voxel_to_output", "in")),
-            Edge(PortRef("/pcl_pipeline/voxel_to_output", "out"), PortRef("output_1", "in")),
+            Edge(PortRef("/pcl_pipeline/voxel_to_output", "out"), PortRef("/filtered", "in")),
         ],
     )
     path = tmp_path / "pipeline.yaml"
@@ -55,6 +55,8 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
     save_graph(graph, str(path))
     assert "id: /pcl_pipeline/voxel_to_output" not in path.read_text(encoding="utf-8")
     assert "id: VoxelGridXYZI_1" not in path.read_text(encoding="utf-8")
+    assert "id: /points" not in path.read_text(encoding="utf-8")
+    assert "id: /filtered" not in path.read_text(encoding="utf-8")
     assert "name: VoxelGridXYZI_1" in path.read_text(encoding="utf-8")
     loaded = load_graph(str(path))
 
@@ -74,9 +76,10 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
 def test_graph_rejects_incompatible_custom_types() -> None:
     graph = Graph(
         nodes=[
-            Node(id="input_1", type="input", topic="/indices", output_type="PointIndices"),
+            Node(id="/indices", type="input", topic="/indices", output_type="PointIndices"),
             Node(
-                id="filter_1",
+                id="VoxelGridXYZI_1",
+                name="VoxelGridXYZI_1",
                 type="filter",
                 package="pcl_filter_components",
                 filter="VoxelGridXYZI",
@@ -84,11 +87,11 @@ def test_graph_rejects_incompatible_custom_types() -> None:
                 output_type="PointXYZI",
             ),
         ],
-        edges=[Edge(PortRef("input_1"), PortRef("filter_1"))],
+        edges=[Edge(PortRef("/indices"), PortRef("VoxelGridXYZI_1"))],
     )
 
     with pytest.raises(ValueError):
-        graph.validate({"input_1": "PointIndices", "filter_1": "PointXYZI"})
+        graph.validate({"/indices": "PointIndices", "VoxelGridXYZI_1": "PointXYZI"})
 
 
 def test_graph_rejects_topic_type_mismatch() -> None:
@@ -104,11 +107,31 @@ def test_graph_rejects_topic_type_mismatch() -> None:
         graph.validate()
 
 
+def test_graph_accepts_optional_indices_output_port() -> None:
+    graph = Graph(
+        nodes=[
+            Node(
+                id="VoxelGridXYZI_1",
+                name="VoxelGridXYZI_1",
+                type="filter",
+                package="pcl_filter_components",
+                filter="VoxelGridXYZI",
+                output_type="PointXYZI",
+                optional_output_type="PointIndices",
+            ),
+            Node(id="/indices", type="topic", topic="/indices", input_type="PointIndices", output_type="PointIndices"),
+        ],
+        edges=[Edge(PortRef("VoxelGridXYZI_1", "indices"), PortRef("/indices", "in"))],
+    )
+
+    graph.validate()
+
+
 def test_graph_rejects_duplicate_topic_nodes() -> None:
     graph = Graph(
         nodes=[
             Node(id="/duplicate", type="topic", topic="/duplicate", input_type="PointXYZI", output_type="PointXYZI"),
-            Node(id="/duplicate_2", type="topic", topic="/duplicate", input_type="PointXYZI", output_type="PointXYZI"),
+            Node(id="/duplicate", type="output", topic="/duplicate", input_type="PointXYZI"),
         ],
     )
 

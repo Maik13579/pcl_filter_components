@@ -63,10 +63,13 @@ PipelinePort parsePort(const YAML::Node & node)
   return port;
 }
 
-std::string nodeTypeForEdge(const PipelineNode & node, bool outgoing)
+std::string nodeTypeForEdge(const PipelineNode & node, bool outgoing, const std::string & port)
 {
   if (node.type == "topic") {
     return node.output_type.empty() ? node.input_type : node.output_type;
+  }
+  if (outgoing && (port == "indices" || port == "optional_output")) {
+    return node.optional_output_type;
   }
   return outgoing ? node.output_type : node.input_type;
 }
@@ -175,8 +178,11 @@ void validatePipelineGraph(const PipelineGraph & graph)
     if (node.type == "topic" && node.input_type.empty() && node.output_type.empty()) {
       throw std::runtime_error("Topic node '" + node.id + "' must declare a type");
     }
-    if (node.type == "topic" && !topic_names.insert(node.topic).second) {
-      throw std::runtime_error("Duplicate topic node name '" + node.topic + "'");
+    if (
+      (node.type == "input" || node.type == "topic" || node.type == "output") &&
+      !topic_names.insert(node.topic).second)
+    {
+      throw std::runtime_error("Duplicate topic name '" + node.topic + "'");
     }
   }
 
@@ -198,8 +204,8 @@ void validatePipelineGraph(const PipelineGraph & graph)
       graph.nodes.begin(),
       graph.nodes.end(),
       [&edge](const auto & node) {return node.id == edge.to.node;});
-    const auto source_type = nodeTypeForEdge(*source, true);
-    const auto target_type = nodeTypeForEdge(*target, false);
+    const auto source_type = nodeTypeForEdge(*source, true, edge.from.port);
+    const auto target_type = nodeTypeForEdge(*target, false, edge.to.port);
     if (!source_type.empty() && !target_type.empty() && source_type != target_type) {
       throw std::runtime_error(
         "Type-incompatible edge from '" + edge.from.node + "' (" + source_type + ") to '" +

@@ -24,8 +24,7 @@ std::string writeFactoryPipeline()
   stream << R"(
 version: 1
 nodes:
-  - id: input_1
-    type: input
+  - type: input
     topic: /points/input
     output_type: PointXYZI
   - type: filter
@@ -46,17 +45,16 @@ nodes:
     qos:
       depth: 5
       reliability: best_effort
-  - id: output_1
-    type: output
+  - type: output
     topic: /points/output
     input_type: PointXYZI
 edges:
-  - from: {node: input_1, port: out}
+  - from: {node: /points/input, port: out}
     to: {node: VoxelGridXYZI_1, port: in}
   - from: {node: VoxelGridXYZI_1, port: out}
     to: {node: /pcl_pipeline/voxel_filtered, port: in}
   - from: {node: /pcl_pipeline/voxel_filtered, port: out}
-    to: {node: output_1, port: in}
+    to: {node: /points/output, port: in}
 )";
   return path;
 }

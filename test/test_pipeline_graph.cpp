@@ -24,8 +24,7 @@ TEST(PipelineGraph, LoadsGraphAndPreservesTypes)
   const auto path = writeTempPipeline(R"(
 version: 1
 nodes:
-  - id: input_1
-    type: input
+  - type: input
     topic: /points
     output_type: PointXYZI
     position: {x: 1.0, y: 2.0}
@@ -40,8 +39,7 @@ nodes:
       filter.leaf_size_x: 0.1
     sync:
       policy: ExactTime
-  - id: output_1
-    type: output
+  - type: output
     topic: /filtered
     input_type: PointXYZI
   - type: topic
@@ -53,12 +51,12 @@ nodes:
       reliability: reliable
     position: {x: 120.0, y: 80.0}
 edges:
-  - from: {node: input_1, port: out}
+  - from: {node: /points, port: out}
     to: {node: VoxelGridXYZI_1, port: in}
   - from: {node: VoxelGridXYZI_1, port: out}
     to: {node: /pcl_pipeline/voxel_to_output, port: in}
   - from: {node: /pcl_pipeline/voxel_to_output, port: out}
-    to: {node: output_1, port: in}
+    to: {node: /filtered, port: in}
 )");
 
   const auto graph = pcl_filter_components::pipeline::loadPipelineGraph(path);
@@ -83,24 +81,49 @@ TEST(PipelineGraph, RejectsTypeIncompatibleEdges)
   const auto path = writeTempPipeline(R"(
 version: 1
 nodes:
-  - id: input_1
-    type: input
+  - type: input
     topic: /indices
     output_type: PointIndices
-  - id: voxel_1
-    type: filter
+  - type: filter
+    name: VoxelGridXYZI_1
     package: pcl_filter_components
     filter: VoxelGridXYZI
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
-  - from: {node: input_1}
-    to: {node: voxel_1}
+  - from: {node: /indices}
+    to: {node: VoxelGridXYZI_1}
 )");
 
   EXPECT_THROW(
     (void)pcl_filter_components::pipeline::loadPipelineGraph(path),
     std::runtime_error);
+}
+
+TEST(PipelineGraph, AcceptsOptionalIndicesOutputPort)
+{
+  const auto path = writeTempPipeline(R"(
+version: 1
+nodes:
+  - type: filter
+    name: VoxelGridXYZI_1
+    package: pcl_filter_components
+    filter: VoxelGridXYZI
+    output_type: PointXYZI
+    optional_output_type: PointIndices
+  - type: topic
+    topic: /indices
+    input_type: PointIndices
+    output_type: PointIndices
+edges:
+  - from: {node: VoxelGridXYZI_1, port: indices}
+    to: {node: /indices, port: in}
+)");
+
+  const auto graph = pcl_filter_components::pipeline::loadPipelineGraph(path);
+
+  ASSERT_EQ(graph.edges.size(), 1U);
+  EXPECT_EQ(graph.edges[0].from.port, "indices");
 }
 
 TEST(PipelineGraph, RejectsDuplicateTopicNodes)
@@ -112,11 +135,9 @@ nodes:
     topic: /duplicate
     input_type: PointXYZI
     output_type: PointXYZI
-  - id: /duplicate_2
-    type: topic
+  - type: output
     topic: /duplicate
     input_type: PointXYZI
-    output_type: PointXYZI
 edges: []
 )");
 
