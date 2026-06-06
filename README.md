@@ -12,6 +12,8 @@ and an rqt graph editor.
   `PointIndices`.
 - [pcl_filter_base](pcl_filter_base/README.md): reusable lifecycle component
   base classes and parameter descriptor helpers.
+- [pcl_filter_synchronizer](pcl_filter_synchronizer/README.md): header-only
+  unique-pointer synchronizer used by multi-input filter components.
 - [pcl_filter_components](pcl_filter_components/README.md): generic filter
   algorithms and component templates. It does not register concrete components.
 - [pcl_filter_xyzi](pcl_filter_xyzi/README.md): `pcl::PointXYZI` type adapter
@@ -35,7 +37,8 @@ The generic packages do not instantiate point-specific filter components:
 
 ```text
 pcl_filter_type_adapters
-  -> pcl_filter_base
+  -> pcl_filter_synchronizer
+    -> pcl_filter_base
     -> pcl_filter_components
       -> pcl_filter_xyzi / pcl_filter_xyz / pcl_filter_xyzrgb / pcl_filter_xyzrgba
         -> pcl_filter_factory
@@ -83,3 +86,8 @@ nodes:
 
 Topic nodes are graph endpoints or intermediate bindings. The factory turns
 topic nodes into topic remaps and loads only filter nodes as components.
+Filter component topics are configured through named port parameters:
+`inputs.<port>.topic` for incoming edges and `outputs.<port>.topic` for outgoing
+edges. The conventional single-cloud ports are named `cloud`; merger inputs use
+`input_1` and `input_2`. Multi-input filters can also receive `sync.policy`,
+`sync.queue_size`, and `sync.slop` from the YAML node `sync` map.
