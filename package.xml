@@ -22,8 +22,8 @@
 
   <export>
     <build_type>ament_cmake</build_type>
-    <pcl_filter_pipeline_editor filter_component="pcl_filter_components::VoxelGridXYZIComponent"/>
-    <pcl_filter_pipeline_editor filter_component="pcl_filter_components::PassThroughXYZIComponent"/>
-    <pcl_filter_pipeline_editor filter_component="pcl_filter_components::CropBoxXYZIComponent"/>
+    <pcl_filter_component filter="VoxelGridXYZI"/>
+    <pcl_filter_component filter="PassThroughXYZI"/>
+    <pcl_filter_component filter="CropBoxXYZI"/>
   </export>
 </package>
