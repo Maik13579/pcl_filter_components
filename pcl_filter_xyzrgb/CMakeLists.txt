@@ -5,7 +5,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake REQUIRED)
@@ -21,13 +21,42 @@ find_package(std_msgs REQUIRED)
 find_package(pcl_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common filters)
+find_package(PCL REQUIRED COMPONENTS common filters segmentation surface search kdtree sample_consensus)
 
 add_library(${PROJECT_NAME}_components SHARED
-  src/voxel_grid_xyzrgb_component.cpp
-  src/passthrough_xyzrgb_component.cpp
-  src/crop_box_xyzrgb_component.cpp
-  src/point_cloud_merger_xyzrgb_component.cpp
+  src/downsampling/voxel_grid_xyzrgb_component.cpp
+  src/selection/passthrough_xyzrgb_component.cpp
+  src/spatial/crop_box_xyzrgb_component.cpp
+  src/multi_input/point_cloud_merger_xyzrgb_component.cpp
+  src/downsampling/approximate_voxel_grid_xyzrgb_component.cpp
+  src/downsampling/uniform_sampling_xyzrgb_component.cpp
+  src/downsampling/random_sample_xyzrgb_component.cpp
+  src/downsampling/grid_minimum_xyzrgb_component.cpp
+  src/outlier_removal/statistical_outlier_removal_xyzrgb_component.cpp
+  src/outlier_removal/radius_outlier_removal_xyzrgb_component.cpp
+  src/outlier_removal/conditional_removal_xyzrgb_component.cpp
+  src/selection/extract_indices_xyzrgb_component.cpp
+  src/selection/remove_nan_xyzrgb_component.cpp
+  src/selection/remove_infinite_xyzrgb_component.cpp
+  src/selection/keep_organized_xyzrgb_component.cpp
+  src/spatial/frustum_culling_xyzrgb_component.cpp
+  src/spatial/crop_sphere_xyzrgb_component.cpp
+  src/spatial/project_inliers_xyzrgb_component.cpp
+  src/spatial/plane_clipper_xyzrgb_component.cpp
+  src/surface/median_filter_xyzrgb_component.cpp
+  src/surface/local_maximum_xyzrgb_component.cpp
+  src/surface/bilateral_filter_xyzrgb_component.cpp
+  src/surface/voxel_grid_covariance_xyzrgb_component.cpp
+  src/surface/morphological_filter_xyzrgb_component.cpp
+  src/surface/moving_least_squares_xyzrgb_component.cpp
+  src/segmentation/plane_model_filter_xyzrgb_component.cpp
+  src/segmentation/sac_segmentation_extract_xyzrgb_component.cpp
+  src/segmentation/euclidean_cluster_extract_xyzrgb_component.cpp
+  src/multi_input/point_cloud_concatenate_xyzrgb_component.cpp
+  src/multi_input/point_cloud_subtract_xyzrgb_component.cpp
+  src/multi_input/point_cloud_difference_xyzrgb_component.cpp
+  src/color/color_threshold_xyzrgb_component.cpp
+  src/color/rgb_range_xyzrgb_component.cpp
 )
 target_include_directories(${PROJECT_NAME}_components PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -55,6 +84,35 @@ rclcpp_components_register_nodes(${PROJECT_NAME}_components
   "pcl_filter_xyzrgb::PassThroughXYZRGBComponent"
   "pcl_filter_xyzrgb::CropBoxXYZRGBComponent"
   "pcl_filter_xyzrgb::PointCloudMergerXYZRGBComponent"
+  "pcl_filter_xyzrgb::ApproximateVoxelGridXYZRGBComponent"
+  "pcl_filter_xyzrgb::UniformSamplingXYZRGBComponent"
+  "pcl_filter_xyzrgb::RandomSampleXYZRGBComponent"
+  "pcl_filter_xyzrgb::GridMinimumXYZRGBComponent"
+  "pcl_filter_xyzrgb::StatisticalOutlierRemovalXYZRGBComponent"
+  "pcl_filter_xyzrgb::RadiusOutlierRemovalXYZRGBComponent"
+  "pcl_filter_xyzrgb::ConditionalRemovalXYZRGBComponent"
+  "pcl_filter_xyzrgb::ExtractIndicesXYZRGBComponent"
+  "pcl_filter_xyzrgb::RemoveNaNXYZRGBComponent"
+  "pcl_filter_xyzrgb::RemoveInfiniteXYZRGBComponent"
+  "pcl_filter_xyzrgb::KeepOrganizedXYZRGBComponent"
+  "pcl_filter_xyzrgb::FrustumCullingXYZRGBComponent"
+  "pcl_filter_xyzrgb::CropSphereXYZRGBComponent"
+  "pcl_filter_xyzrgb::ProjectInliersXYZRGBComponent"
+  "pcl_filter_xyzrgb::PlaneClipperXYZRGBComponent"
+  "pcl_filter_xyzrgb::MedianFilterXYZRGBComponent"
+  "pcl_filter_xyzrgb::LocalMaximumXYZRGBComponent"
+  "pcl_filter_xyzrgb::BilateralFilterXYZRGBComponent"
+  "pcl_filter_xyzrgb::VoxelGridCovarianceXYZRGBComponent"
+  "pcl_filter_xyzrgb::MorphologicalFilterXYZRGBComponent"
+  "pcl_filter_xyzrgb::MovingLeastSquaresXYZRGBComponent"
+  "pcl_filter_xyzrgb::PlaneModelFilterXYZRGBComponent"
+  "pcl_filter_xyzrgb::SACSegmentationExtractXYZRGBComponent"
+  "pcl_filter_xyzrgb::EuclideanClusterExtractXYZRGBComponent"
+  "pcl_filter_xyzrgb::PointCloudConcatenateXYZRGBComponent"
+  "pcl_filter_xyzrgb::PointCloudSubtractXYZRGBComponent"
+  "pcl_filter_xyzrgb::PointCloudDifferenceXYZRGBComponent"
+  "pcl_filter_xyzrgb::ColorThresholdXYZRGBComponent"
+  "pcl_filter_xyzrgb::RGBRangeFilterXYZRGBComponent"
 )
 
 install(TARGETS ${PROJECT_NAME}_components

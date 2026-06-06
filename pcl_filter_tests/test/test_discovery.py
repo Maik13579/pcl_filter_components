@@ -8,16 +8,78 @@ from ament_index_python.packages import get_package_prefix, get_package_share_di
 from pcl_filter_editor.filter_discovery import discover_filters
 
 
+COMMON_SINGLE_INPUT_FILTERS = {
+    "VoxelGrid",
+    "PassThrough",
+    "CropBox",
+    "ApproximateVoxelGrid",
+    "UniformSampling",
+    "RandomSample",
+    "GridMinimum",
+    "StatisticalOutlierRemoval",
+    "RadiusOutlierRemoval",
+    "ConditionalRemoval",
+    "ExtractIndices",
+    "RemoveNaN",
+    "RemoveInfinite",
+    "KeepOrganized",
+    "FrustumCulling",
+    "CropSphere",
+    "ProjectInliers",
+    "PlaneClipper",
+    "MedianFilter",
+    "LocalMaximum",
+    "BilateralFilter",
+    "VoxelGridCovariance",
+    "MorphologicalFilter",
+    "MovingLeastSquares",
+    "PlaneModelFilter",
+    "SACSegmentationExtract",
+    "EuclideanClusterExtract",
+}
+
+COMMON_MULTI_INPUT_FILTERS = {
+    "PointCloudMerger",
+    "PointCloudConcatenate",
+    "PointCloudSubtract",
+    "PointCloudDifference",
+}
+
+PACKAGE_FILTERS = {
+    "pcl_filter_xyz": ("XYZ", "PointXYZ", set()),
+    "pcl_filter_xyzi": (
+        "XYZI",
+        "PointXYZI",
+        {
+            "IntensityThreshold",
+            "IntensityRangeFilter",
+        },
+    ),
+    "pcl_filter_xyzrgb": (
+        "XYZRGB",
+        "PointXYZRGB",
+        {
+            "ColorThreshold",
+            "RGBRangeFilter",
+        },
+    ),
+    "pcl_filter_xyzrgba": (
+        "XYZRGBA",
+        "PointXYZRGBA",
+        {
+            "ColorThreshold",
+            "RGBRangeFilter",
+            "RGBAAlphaFilter",
+        },
+    ),
+}
+
+
 def test_discovery_reads_filter_and_type_adapter_exports() -> None:
     discovery = discover_filters()
 
     filters = {(item.package, item.filter): item for item in discovery.filters}
-    for package, suffix, point_type in (
-        ("pcl_filter_xyz", "XYZ", "PointXYZ"),
-        ("pcl_filter_xyzi", "XYZI", "PointXYZI"),
-        ("pcl_filter_xyzrgb", "XYZRGB", "PointXYZRGB"),
-        ("pcl_filter_xyzrgba", "XYZRGBA", "PointXYZRGBA"),
-    ):
+    for package, (suffix, point_type, _) in PACKAGE_FILTERS.items():
         assert (package, f"VoxelGrid{suffix}") in filters
         assert (package, f"PointCloudMerger{suffix}") in filters
         voxel = filters[(package, f"VoxelGrid{suffix}")]
@@ -51,6 +113,34 @@ def test_discovery_reads_filter_and_type_adapter_exports() -> None:
         == "pcl_filter_type_adapters::ros::PclNormalCloudAdapter"
     )
     assert types[("pcl_filter_type_adapters", "PointIndices")].message_type == "pcl_msgs/msg/PointIndices"
+
+
+def test_discovery_exports_every_registered_filter_component() -> None:
+    discovery = discover_filters()
+    filters = {(item.package, item.filter): item for item in discovery.filters}
+
+    for package, (suffix, point_type, extra_filters) in PACKAGE_FILTERS.items():
+        expected_single_input = COMMON_SINGLE_INPUT_FILTERS | extra_filters
+        expected_multi_input = COMMON_MULTI_INPUT_FILTERS
+        expected_names = {
+            *(f"{name}{suffix}" for name in expected_single_input),
+            *(f"{name}{suffix}" for name in expected_multi_input),
+        }
+        discovered_names = {name for discovered_package, name in filters if discovered_package == package}
+
+        assert discovered_names == expected_names
+
+        for name in expected_single_input:
+            item = filters[(package, f"{name}{suffix}")]
+            assert item.component_class == f"{package}::{name}{suffix}Component"
+            assert item.input_type == point_type
+            assert item.output_type == f"{point_type},PointIndices"
+
+        for name in expected_multi_input:
+            item = filters[(package, f"{name}{suffix}")]
+            assert item.component_class == f"{package}::{name}{suffix}Component"
+            assert item.input_type == f"{point_type},{point_type}"
+            assert item.output_type == point_type
 
 
 def test_components_register_in_rclcpp_components_index() -> None:

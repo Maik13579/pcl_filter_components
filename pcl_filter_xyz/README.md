@@ -5,12 +5,23 @@
 the `PointXYZ` logical cloud type, editor discovery metadata, and the loadable
 component classes for the `PointXYZ` filter set.
 
-Registered classes:
+Registered components are exported in the same groups as the source tree:
 
-- `pcl_filter_xyz::VoxelGridXYZComponent`
-- `pcl_filter_xyz::PassThroughXYZComponent`
-- `pcl_filter_xyz::CropBoxXYZComponent`
-- `pcl_filter_xyz::PointCloudMergerXYZComponent`
+- Downsampling: `VoxelGridXYZ`, `ApproximateVoxelGridXYZ`,
+  `UniformSamplingXYZ`, `RandomSampleXYZ`, `GridMinimumXYZ`.
+- Outlier removal: `StatisticalOutlierRemovalXYZ`,
+  `RadiusOutlierRemovalXYZ`, `ConditionalRemovalXYZ`.
+- Selection: `PassThroughXYZ`, `ExtractIndicesXYZ`, `RemoveNaNXYZ`,
+  `RemoveInfiniteXYZ`, `KeepOrganizedXYZ`.
+- Spatial: `CropBoxXYZ`, `FrustumCullingXYZ`, `CropSphereXYZ`,
+  `ProjectInliersXYZ`, `PlaneClipperXYZ`.
+- Surface: `MedianFilterXYZ`, `LocalMaximumXYZ`, `BilateralFilterXYZ`,
+  `VoxelGridCovarianceXYZ`, `MorphologicalFilterXYZ`,
+  `MovingLeastSquaresXYZ`.
+- Segmentation: `PlaneModelFilterXYZ`, `SACSegmentationExtractXYZ`,
+  `EuclideanClusterExtractXYZ`.
+- Multi input: `PointCloudMergerXYZ`, `PointCloudConcatenateXYZ`,
+  `PointCloudSubtractXYZ`, `PointCloudDifferenceXYZ`.
 
 The filters in this package have the same conceptual ports and parameters as the
 other concrete point-type packages. Single-cloud filters use `cloud` input,

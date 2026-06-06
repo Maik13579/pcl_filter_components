@@ -11,6 +11,23 @@ structures. Topic nodes are graph bindings: they name ROS topics that enter,
 leave, or connect parts of the graph. Topic nodes are not loaded as filter
 components.
 
+## Table of Contents
+
+- [Pipeline Model](#pipeline-model)
+- [Packages](#packages)
+- [Architecture](#architecture)
+- [Filter Reference](#filter-reference)
+  - [Downsampling](#downsampling)
+  - [Outlier Removal](#outlier-removal)
+  - [Selection](#selection)
+  - [Spatial](#spatial)
+  - [Surface](#surface)
+  - [Segmentation](#segmentation)
+  - [Multi Input](#multi-input)
+  - [Color](#color)
+  - [Intensity](#intensity)
+- [Graph YAML](#graph-yaml)
+
 ## Pipeline Model
 
 The graph has three main concepts:
@@ -93,6 +110,99 @@ They also export logical cloud aliases:
   type_adapter="pcl_filter_xyzi::ros::PclCloudAdapterPointXYZI"
   message_type="sensor_msgs/msg/PointCloud2"/>
 ```
+
+## Filter Reference
+
+Concrete components are exported by point-type package. Common filters are
+available as `XYZ`, `XYZI`, `XYZRGB`, and `XYZRGBA` variants, such as
+`VoxelGridXYZI` or `PlaneClipperXYZRGBA`. Color filters are exported only by
+`pcl_filter_xyzrgb` and `pcl_filter_xyzrgba`; intensity filters are exported
+only by `pcl_filter_xyzi`.
+
+Single-cloud filters use one `cloud` input and can publish either a filtered
+cloud or `PointIndices`. Multi-input filters use `input_1`, `input_2`, and one
+`cloud` output.
+
+### Downsampling
+
+| Filter | Description |
+| --- | --- |
+| `VoxelGrid` | PCL voxel grid downsampling with configurable x/y/z leaf sizes. |
+| `ApproximateVoxelGrid` | Faster approximate voxel-grid downsampling for large clouds. |
+| `UniformSampling` | Keeps representative points at a minimum spatial radius. |
+| `RandomSample` | Selects a configured number of random points from the input cloud. |
+| `GridMinimum` | Keeps the minimum z point per 2D grid cell at a configured resolution. |
+
+### Outlier Removal
+
+| Filter | Description |
+| --- | --- |
+| `StatisticalOutlierRemoval` | Removes points whose neighbor distance statistics exceed the configured threshold. |
+| `RadiusOutlierRemoval` | Removes points without enough neighbors inside a configured radius. |
+| `ConditionalRemoval` | Keeps or rejects points using a field range condition. |
+
+### Selection
+
+| Filter | Description |
+| --- | --- |
+| `PassThrough` | Keeps or rejects points inside a field range. |
+| `ExtractIndices` | Selects a configured contiguous index range, with optional organized output behavior. |
+| `RemoveNaN` | Drops points containing non-finite NaN coordinates. |
+| `RemoveInfinite` | Drops points containing infinite coordinates. |
+| `KeepOrganized` | Keeps the organized cloud shape while marking rejected points. |
+
+### Spatial
+
+| Filter | Description |
+| --- | --- |
+| `CropBox` | Keeps or rejects points inside an axis-aligned 3D box. |
+| `FrustumCulling` | Keeps points inside a camera-style frustum. |
+| `CropSphere` | Keeps or rejects points inside a configured sphere. |
+| `ProjectInliers` | Projects points onto a configured plane model. |
+| `PlaneClipper` | Keeps or rejects points by signed distance to a plane. |
+
+### Surface
+
+| Filter | Description |
+| --- | --- |
+| `MedianFilter` | Smooths organized cloud depth values with a median window. |
+| `LocalMaximum` | Keeps local maximum points within a configured radius. |
+| `BilateralFilter` | Applies edge-preserving smoothing using spatial and range parameters. |
+| `VoxelGridCovariance` | Builds covariance voxels and emits representative filtered points. |
+| `MorphologicalFilter` | Applies PCL morphological operations over a grid. |
+| `MovingLeastSquares` | Smooths and resamples surfaces with moving least squares. |
+
+### Segmentation
+
+| Filter | Description |
+| --- | --- |
+| `PlaneModelFilter` | Filters points by distance to a configured plane equation. |
+| `SACSegmentationExtract` | Fits a plane with SAC/RANSAC and extracts the selected inliers. |
+| `EuclideanClusterExtract` | Extracts one Euclidean cluster selected by sorted cluster index. |
+
+### Multi Input
+
+| Filter | Description |
+| --- | --- |
+| `PointCloudMerger` | Concatenates two input clouds using the existing merger component. |
+| `PointCloudConcatenate` | Concatenates two input clouds into one output cloud. |
+| `PointCloudSubtract` | Removes points from the first cloud when a nearby point exists in the second cloud. |
+| `PointCloudDifference` | Emits the symmetric point difference between two clouds. |
+
+### Color
+
+| Filter | Description |
+| --- | --- |
+| `ColorThreshold` | Keeps or rejects RGB points inside configured channel ranges. |
+| `RGBRangeFilter` | Alias-style RGB range filter using the same channel-range behavior. |
+| `RGBAAlphaFilter` | Keeps or rejects RGBA points by alpha range. |
+
+### Intensity
+
+| Filter | Description |
+| --- | --- |
+| `IntensityThreshold` | Keeps or rejects XYZI points inside an intensity range. |
+| `IntensityRangeFilter` | Alias-style intensity range filter using the same intensity-range behavior. |
 
 ## Graph YAML
 

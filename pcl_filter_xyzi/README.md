@@ -5,12 +5,24 @@
 the `PointXYZI` logical cloud type, editor discovery metadata, and the loadable
 component classes for the `PointXYZI` filter set.
 
-Registered classes:
+Registered components are exported in the same groups as the source tree:
 
-- `pcl_filter_xyzi::VoxelGridXYZIComponent`
-- `pcl_filter_xyzi::PassThroughXYZIComponent`
-- `pcl_filter_xyzi::CropBoxXYZIComponent`
-- `pcl_filter_xyzi::PointCloudMergerXYZIComponent`
+- Downsampling: `VoxelGridXYZI`, `ApproximateVoxelGridXYZI`,
+  `UniformSamplingXYZI`, `RandomSampleXYZI`, `GridMinimumXYZI`.
+- Outlier removal: `StatisticalOutlierRemovalXYZI`,
+  `RadiusOutlierRemovalXYZI`, `ConditionalRemovalXYZI`.
+- Selection: `PassThroughXYZI`, `ExtractIndicesXYZI`, `RemoveNaNXYZI`,
+  `RemoveInfiniteXYZI`, `KeepOrganizedXYZI`.
+- Spatial: `CropBoxXYZI`, `FrustumCullingXYZI`, `CropSphereXYZI`,
+  `ProjectInliersXYZI`, `PlaneClipperXYZI`.
+- Surface: `MedianFilterXYZI`, `LocalMaximumXYZI`, `BilateralFilterXYZI`,
+  `VoxelGridCovarianceXYZI`, `MorphologicalFilterXYZI`,
+  `MovingLeastSquaresXYZI`.
+- Segmentation: `PlaneModelFilterXYZI`, `SACSegmentationExtractXYZI`,
+  `EuclideanClusterExtractXYZI`.
+- Multi input: `PointCloudMergerXYZI`, `PointCloudConcatenateXYZI`,
+  `PointCloudSubtractXYZI`, `PointCloudDifferenceXYZI`.
+- Intensity: `IntensityThresholdXYZI`, `IntensityRangeFilterXYZI`.
 
 The filters in this package have the same conceptual ports and parameters as the
 other concrete point-type packages. Single-cloud filters use `cloud` input,

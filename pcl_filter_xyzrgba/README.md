@@ -5,12 +5,25 @@
 exports the `PointXYZRGBA` logical cloud type, editor discovery metadata, and
 the loadable component classes for the `PointXYZRGBA` filter set.
 
-Registered classes:
+Registered components are exported in the same groups as the source tree:
 
-- `pcl_filter_xyzrgba::VoxelGridXYZRGBAComponent`
-- `pcl_filter_xyzrgba::PassThroughXYZRGBAComponent`
-- `pcl_filter_xyzrgba::CropBoxXYZRGBAComponent`
-- `pcl_filter_xyzrgba::PointCloudMergerXYZRGBAComponent`
+- Downsampling: `VoxelGridXYZRGBA`, `ApproximateVoxelGridXYZRGBA`,
+  `UniformSamplingXYZRGBA`, `RandomSampleXYZRGBA`, `GridMinimumXYZRGBA`.
+- Outlier removal: `StatisticalOutlierRemovalXYZRGBA`,
+  `RadiusOutlierRemovalXYZRGBA`, `ConditionalRemovalXYZRGBA`.
+- Selection: `PassThroughXYZRGBA`, `ExtractIndicesXYZRGBA`,
+  `RemoveNaNXYZRGBA`, `RemoveInfiniteXYZRGBA`, `KeepOrganizedXYZRGBA`.
+- Spatial: `CropBoxXYZRGBA`, `FrustumCullingXYZRGBA`,
+  `CropSphereXYZRGBA`, `ProjectInliersXYZRGBA`, `PlaneClipperXYZRGBA`.
+- Surface: `MedianFilterXYZRGBA`, `LocalMaximumXYZRGBA`,
+  `BilateralFilterXYZRGBA`, `VoxelGridCovarianceXYZRGBA`,
+  `MorphologicalFilterXYZRGBA`, `MovingLeastSquaresXYZRGBA`.
+- Segmentation: `PlaneModelFilterXYZRGBA`, `SACSegmentationExtractXYZRGBA`,
+  `EuclideanClusterExtractXYZRGBA`.
+- Multi input: `PointCloudMergerXYZRGBA`, `PointCloudConcatenateXYZRGBA`,
+  `PointCloudSubtractXYZRGBA`, `PointCloudDifferenceXYZRGBA`.
+- Color: `ColorThresholdXYZRGBA`, `RGBRangeFilterXYZRGBA`,
+  `RGBAAlphaFilterXYZRGBA`.
 
 The filters in this package have the same conceptual ports and parameters as the
 other concrete point-type packages. Single-cloud filters use `cloud` input,

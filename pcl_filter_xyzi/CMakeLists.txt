@@ -5,7 +5,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake REQUIRED)
@@ -21,13 +21,42 @@ find_package(std_msgs REQUIRED)
 find_package(pcl_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common filters)
+find_package(PCL REQUIRED COMPONENTS common filters segmentation surface search kdtree sample_consensus)
 
 add_library(${PROJECT_NAME}_components SHARED
-  src/voxel_grid_xyzi_component.cpp
-  src/passthrough_xyzi_component.cpp
-  src/crop_box_xyzi_component.cpp
-  src/point_cloud_merger_xyzi_component.cpp
+  src/downsampling/voxel_grid_xyzi_component.cpp
+  src/selection/passthrough_xyzi_component.cpp
+  src/spatial/crop_box_xyzi_component.cpp
+  src/multi_input/point_cloud_merger_xyzi_component.cpp
+  src/downsampling/approximate_voxel_grid_xyzi_component.cpp
+  src/downsampling/uniform_sampling_xyzi_component.cpp
+  src/downsampling/random_sample_xyzi_component.cpp
+  src/downsampling/grid_minimum_xyzi_component.cpp
+  src/outlier_removal/statistical_outlier_removal_xyzi_component.cpp
+  src/outlier_removal/radius_outlier_removal_xyzi_component.cpp
+  src/outlier_removal/conditional_removal_xyzi_component.cpp
+  src/selection/extract_indices_xyzi_component.cpp
+  src/selection/remove_nan_xyzi_component.cpp
+  src/selection/remove_infinite_xyzi_component.cpp
+  src/selection/keep_organized_xyzi_component.cpp
+  src/spatial/frustum_culling_xyzi_component.cpp
+  src/spatial/crop_sphere_xyzi_component.cpp
+  src/spatial/project_inliers_xyzi_component.cpp
+  src/spatial/plane_clipper_xyzi_component.cpp
+  src/surface/median_filter_xyzi_component.cpp
+  src/surface/local_maximum_xyzi_component.cpp
+  src/surface/bilateral_filter_xyzi_component.cpp
+  src/surface/voxel_grid_covariance_xyzi_component.cpp
+  src/surface/morphological_filter_xyzi_component.cpp
+  src/surface/moving_least_squares_xyzi_component.cpp
+  src/segmentation/plane_model_filter_xyzi_component.cpp
+  src/segmentation/sac_segmentation_extract_xyzi_component.cpp
+  src/segmentation/euclidean_cluster_extract_xyzi_component.cpp
+  src/multi_input/point_cloud_concatenate_xyzi_component.cpp
+  src/multi_input/point_cloud_subtract_xyzi_component.cpp
+  src/multi_input/point_cloud_difference_xyzi_component.cpp
+  src/intensity/intensity_threshold_xyzi_component.cpp
+  src/intensity/intensity_range_xyzi_component.cpp
 )
 target_include_directories(${PROJECT_NAME}_components PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -55,6 +84,35 @@ rclcpp_components_register_nodes(${PROJECT_NAME}_components
   "pcl_filter_xyzi::PassThroughXYZIComponent"
   "pcl_filter_xyzi::CropBoxXYZIComponent"
   "pcl_filter_xyzi::PointCloudMergerXYZIComponent"
+  "pcl_filter_xyzi::ApproximateVoxelGridXYZIComponent"
+  "pcl_filter_xyzi::UniformSamplingXYZIComponent"
+  "pcl_filter_xyzi::RandomSampleXYZIComponent"
+  "pcl_filter_xyzi::GridMinimumXYZIComponent"
+  "pcl_filter_xyzi::StatisticalOutlierRemovalXYZIComponent"
+  "pcl_filter_xyzi::RadiusOutlierRemovalXYZIComponent"
+  "pcl_filter_xyzi::ConditionalRemovalXYZIComponent"
+  "pcl_filter_xyzi::ExtractIndicesXYZIComponent"
+  "pcl_filter_xyzi::RemoveNaNXYZIComponent"
+  "pcl_filter_xyzi::RemoveInfiniteXYZIComponent"
+  "pcl_filter_xyzi::KeepOrganizedXYZIComponent"
+  "pcl_filter_xyzi::FrustumCullingXYZIComponent"
+  "pcl_filter_xyzi::CropSphereXYZIComponent"
+  "pcl_filter_xyzi::ProjectInliersXYZIComponent"
+  "pcl_filter_xyzi::PlaneClipperXYZIComponent"
+  "pcl_filter_xyzi::MedianFilterXYZIComponent"
+  "pcl_filter_xyzi::LocalMaximumXYZIComponent"
+  "pcl_filter_xyzi::BilateralFilterXYZIComponent"
+  "pcl_filter_xyzi::VoxelGridCovarianceXYZIComponent"
+  "pcl_filter_xyzi::MorphologicalFilterXYZIComponent"
+  "pcl_filter_xyzi::MovingLeastSquaresXYZIComponent"
+  "pcl_filter_xyzi::PlaneModelFilterXYZIComponent"
+  "pcl_filter_xyzi::SACSegmentationExtractXYZIComponent"
+  "pcl_filter_xyzi::EuclideanClusterExtractXYZIComponent"
+  "pcl_filter_xyzi::PointCloudConcatenateXYZIComponent"
+  "pcl_filter_xyzi::PointCloudSubtractXYZIComponent"
+  "pcl_filter_xyzi::PointCloudDifferenceXYZIComponent"
+  "pcl_filter_xyzi::IntensityThresholdXYZIComponent"
+  "pcl_filter_xyzi::IntensityRangeFilterXYZIComponent"
 )
 
 install(TARGETS ${PROJECT_NAME}_components
