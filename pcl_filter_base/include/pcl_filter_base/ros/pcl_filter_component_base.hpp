@@ -5,12 +5,16 @@
 #define PCL_FILTER_BASE__ROS__PCL_FILTER_COMPONENT_BASE_HPP_
 
 #include <memory>
+#include <array>
+#include <functional>
 #include <string>
 #include <typeindex>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include <pcl/PointIndices.h>
 #include <rclcpp/create_publisher.hpp>
 #include <lifecycle_msgs/msg/state.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -18,46 +22,146 @@
 
 #include "pcl_filter_base/ros/parameter_utils.hpp"
 #include "pcl_filter_synchronizer/pcl_filter_synchronizer.hpp"
+#include "pcl_filter_type_adapters/ros/stamped_pcl_indices_type_adapter.hpp"
 #include "pcl_filter_type_adapters/ros/stamped_pcl_type_adapter.hpp"
 
 namespace pcl_filter_base::ros
 {
 
+namespace detail
+{
+
+template <typename FilterT, typename CloudT, typename = void>
+struct HasFilterIndices : std::false_type
+{
+};
+
+template <typename FilterT, typename CloudT>
+struct HasFilterIndices<
+  FilterT,
+  CloudT,
+  std::void_t<decltype(
+      std::declval<FilterT &>().filterIndices(
+        std::declval<const CloudT &>(),
+        std::declval<std::vector<int> &>()))>> : std::true_type
+{
+};
+
+}  // namespace detail
+
 template <typename PointT, typename FilterT>
 class PclFilterComponentBase : public rclcpp_lifecycle::LifecycleNode
 {
 public:
-  struct PortDescriptor
-  {
-    std::string name;
-    std::string default_topic;
-    std::string description;
-  };
-
   using StampedCloud = pcl::PointCloud<PointT>;
   using Cloud = StampedCloud;
   using CloudAdapter = pcl_filter_type_adapters::ros::PclCloudAdapter<PointT>;
+  using IndicesAdapter = pcl_filter_type_adapters::ros::PclIndicesAdapter;
   using Publisher = rclcpp::Publisher<CloudAdapter>;
   using Subscription = rclcpp::Subscription<CloudAdapter>;
   using CallbackReturn =
     rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
-  explicit PclFilterComponentBase(
-    const std::string & node_name,
-    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : PclFilterComponentBase(node_name, options, defaultInputPorts(), defaultOutputPorts())
+  struct PublisherConcept
   {
+    explicit PublisherConcept(std::type_index adapter_type_in)
+    : adapter_type(adapter_type_in)
+    {
+    }
+
+    virtual ~PublisherConcept() = default;
+    std::type_index adapter_type;
+  };
+
+  template <typename AdapterT>
+  struct PublisherHolder : PublisherConcept
+  {
+    explicit PublisherHolder(std::shared_ptr<rclcpp::Publisher<AdapterT>> publisher_in)
+    : PublisherConcept(std::type_index(typeid(AdapterT))),
+      publisher(std::move(publisher_in))
+    {
+    }
+
+    std::shared_ptr<rclcpp::Publisher<AdapterT>> publisher;
+  };
+
+  struct PortDescriptor
+  {
+    std::string name;
+    std::string default_topic;
+    std::string description;
+    std::type_index adapter_type;
+    std::function<std::unique_ptr<PublisherConcept>(
+        PclFilterComponentBase &,
+        const std::string &,
+        const rclcpp::QoS &)> create_publisher;
+    std::function<void(
+        pcl_filter_synchronizer::PclFilterSynchronizer &,
+        PclFilterComponentBase &,
+        const std::string &,
+        const std::string &,
+        const rclcpp::QoS &)> create_subscription;
+  };
+
+  template <typename AdapterT>
+  static PortDescriptor inputPort(
+    const std::string & name,
+    const std::string & default_topic,
+    const std::string & description)
+  {
+    return {
+      name,
+      default_topic,
+      description,
+      std::type_index(typeid(AdapterT)),
+      {},
+      [](
+        pcl_filter_synchronizer::PclFilterSynchronizer & synchronizer,
+        PclFilterComponentBase & node,
+        const std::string & port_name,
+        const std::string & topic_name,
+        const rclcpp::QoS & qos)
+      {
+        synchronizer.template addInput<PclFilterComponentBase, AdapterT>(
+          node,
+          port_name,
+          topic_name,
+          qos);
+      }};
   }
 
+  template <typename AdapterT>
+  static PortDescriptor outputPort(
+    const std::string & name,
+    const std::string & default_topic,
+    const std::string & description)
+  {
+    return {
+      name,
+      default_topic,
+      description,
+      std::type_index(typeid(AdapterT)),
+      [](
+        PclFilterComponentBase & node,
+        const std::string & topic_name,
+        const rclcpp::QoS & qos)
+      {
+        return std::make_unique<PublisherHolder<AdapterT>>(
+          node.template createAdaptedPublisher<AdapterT>(topic_name, qos));
+      },
+      {}};
+  }
+
+  template <size_t InputCount, size_t OutputCount>
   PclFilterComponentBase(
     const std::string & node_name,
     const rclcpp::NodeOptions & options,
-    std::vector<PortDescriptor> input_ports,
-    std::vector<PortDescriptor> output_ports)
+    const std::array<PortDescriptor, InputCount> & input_ports,
+    const std::array<PortDescriptor, OutputCount> & output_ports)
   : rclcpp_lifecycle::LifecycleNode(node_name, options)
   {
-    input_ports_ = std::move(input_ports);
-    output_ports_ = std::move(output_ports);
+    input_ports_.assign(input_ports.begin(), input_ports.end());
+    output_ports_.assign(output_ports.begin(), output_ports.end());
     for (const auto & port : input_ports_) {
       declareParameterIfNotDeclared(
         *this,
@@ -72,16 +176,6 @@ public:
         port.default_topic,
         makeParameterDescriptor(port.description));
     }
-    declareParameterIfNotDeclared(
-      *this,
-      "input_topic",
-      std::string{"/points/input"},
-      makeParameterDescriptor("Compatibility alias for inputs.cloud.topic."));
-    declareParameterIfNotDeclared(
-      *this,
-      "output_topic",
-      std::string{"/points/output"},
-      makeParameterDescriptor("Compatibility alias for outputs.cloud.topic."));
     declareParameterIfNotDeclared(
       *this,
       "queue_size",
@@ -115,19 +209,6 @@ public:
   }
 
 protected:
-  static std::vector<PortDescriptor> defaultInputPorts()
-  {
-    return {{"cloud", "/points/input", "Input point cloud topic subscribed by the filter."}};
-  }
-
-  static std::vector<PortDescriptor> defaultOutputPorts()
-  {
-    return {
-      {"cloud", "/points/output", "Output point cloud topic published by the filter."},
-      {"indices", "/points/output", "Output point indices topic published by the filter."},
-    };
-  }
-
   static std::string inputTopicParameterName(const std::string & port_name)
   {
     return "inputs." + port_name + ".topic";
@@ -185,10 +266,12 @@ protected:
   virtual void configureInterfaces(const rclcpp::QoS & qos)
   {
     for (const auto & port : output_ports_) {
+      if (!port.create_publisher) {
+        throw std::runtime_error("Output port '" + port.name + "' has no publisher factory");
+      }
       publishers_.emplace(
         port.name,
-        std::make_unique<PublisherHolder<CloudAdapter>>(
-          createAdaptedPublisher<CloudAdapter>(output_topics_.at(port.name), qos)));
+        port.create_publisher(*this, outbound_topics_.at(port.name), qos));
     }
 
     auto sync_options = pcl_filter_synchronizer::SynchronizerOptions{};
@@ -204,10 +287,14 @@ protected:
       sync_options,
       std::bind(&PclFilterComponentBase::processSynchronizedInputs, this));
     for (const auto & port : input_ports_) {
-      synchronizer_->template addInput<rclcpp_lifecycle::LifecycleNode, CloudAdapter>(
+      if (!port.create_subscription) {
+        throw std::runtime_error("Input port '" + port.name + "' has no subscription factory");
+      }
+      port.create_subscription(
+        *synchronizer_,
         *this,
         port.name,
-        input_topics_.at(port.name),
+        inbound_topics_.at(port.name),
         qos);
     }
   }
@@ -274,6 +361,11 @@ protected:
     publish<CloudAdapter>("cloud", std::move(output));
   }
 
+  void publishIndices(std::unique_ptr<pcl::PointIndices> output)
+  {
+    publish<IndicesAdapter>("indices", std::move(output));
+  }
+
   virtual void processInputs()
   {
     processCloud(takeInput<CloudAdapter>("cloud"));
@@ -293,50 +385,33 @@ protected:
   FilterT filter_;
   std::vector<PortDescriptor> input_ports_;
   std::vector<PortDescriptor> output_ports_;
-  std::unordered_map<std::string, std::string> input_topics_;
-  std::unordered_map<std::string, std::string> output_topics_;
+  std::unordered_map<std::string, std::string> inbound_topics_;
+  std::unordered_map<std::string, std::string> outbound_topics_;
   int queue_size_{5};
-
-  struct PublisherConcept
-  {
-    explicit PublisherConcept(std::type_index adapter_type_in)
-    : adapter_type(adapter_type_in)
-    {
-    }
-
-    virtual ~PublisherConcept() = default;
-    std::type_index adapter_type;
-  };
-
-  template <typename AdapterT>
-  struct PublisherHolder : PublisherConcept
-  {
-    explicit PublisherHolder(std::shared_ptr<rclcpp::Publisher<AdapterT>> publisher_in)
-    : PublisherConcept(std::type_index(typeid(AdapterT))),
-      publisher(std::move(publisher_in))
-    {
-    }
-
-    std::shared_ptr<rclcpp::Publisher<AdapterT>> publisher;
-  };
 
   void readPortTopics()
   {
-    input_topics_.clear();
-    output_topics_.clear();
+    inbound_topics_.clear();
+    outbound_topics_.clear();
     for (const auto & port : input_ports_) {
-      auto topic = getParameter<std::string>(*this, inputTopicParameterName(port.name));
-      if (port.name == "cloud" && topic == port.default_topic && this->has_parameter("input_topic")) {
-        topic = getParameter<std::string>(*this, "input_topic");
-      }
-      input_topics_[port.name] = topic;
+      inbound_topics_[port.name] =
+        getParameter<std::string>(*this, inputTopicParameterName(port.name));
     }
     for (const auto & port : output_ports_) {
-      auto topic = getParameter<std::string>(*this, outputTopicParameterName(port.name));
-      if (port.name == "cloud" && topic == port.default_topic && this->has_parameter("output_topic")) {
-        topic = getParameter<std::string>(*this, "output_topic");
-      }
-      output_topics_[port.name] = topic;
+      outbound_topics_[port.name] =
+        getParameter<std::string>(*this, outputTopicParameterName(port.name));
+    }
+  }
+
+  void publishFilterIndices(const std::string & output_port, std::unique_ptr<StampedCloud> input)
+  {
+    if constexpr (detail::HasFilterIndices<FilterT, StampedCloud>::value) {
+      auto output = std::make_unique<pcl::PointIndices>();
+      output->header = input->header;
+      filter_.filterIndices(*input, output->indices);
+      publish<IndicesAdapter>(output_port, std::move(output));
+    } else {
+      throw std::runtime_error("The selected filter does not support point-indices output");
     }
   }
 

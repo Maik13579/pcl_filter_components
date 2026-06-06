@@ -72,8 +72,6 @@ void expectCommonParameterMetadata(const NodeT & node)
       "inputs.cloud.topic",
       "outputs.cloud.topic",
       "outputs.indices.topic",
-      "input_topic",
-      "output_topic",
       "queue_size",
       "filter.output_indices",
     });
@@ -81,9 +79,7 @@ void expectCommonParameterMetadata(const NodeT & node)
 
   EXPECT_EQ(node.get_parameter("inputs.cloud.topic").as_string(), "/points/input");
   EXPECT_EQ(node.get_parameter("outputs.cloud.topic").as_string(), "/points/output");
-  EXPECT_EQ(node.get_parameter("outputs.indices.topic").as_string(), "/points/output");
-  EXPECT_EQ(node.get_parameter("input_topic").as_string(), "/points/input");
-  EXPECT_EQ(node.get_parameter("output_topic").as_string(), "/points/output");
+  EXPECT_EQ(node.get_parameter("outputs.indices.topic").as_string(), "/points/indices");
   EXPECT_EQ(node.get_parameter("queue_size").as_int(), 5);
   EXPECT_FALSE(node.get_parameter("filter.output_indices").as_bool());
   EXPECT_FALSE(node.has_parameter("sync.policy"));
@@ -204,8 +200,6 @@ TEST(ParameterDescriptors, PointCloudMergerXYZIParametersExposeEditorMetadata)
       "inputs.input_1.topic",
       "inputs.input_2.topic",
       "outputs.cloud.topic",
-      "input_topic",
-      "output_topic",
       "queue_size",
       "sync.policy",
       "sync.queue_size",
@@ -218,8 +212,8 @@ TEST(ParameterDescriptors, PointCloudMergerXYZIParametersExposeEditorMetadata)
   EXPECT_EQ(node->get_parameter("inputs.input_1.topic").as_string(), "/points/input_a");
   EXPECT_EQ(node->get_parameter("inputs.input_2.topic").as_string(), "/points/input_b");
   EXPECT_EQ(node->get_parameter("outputs.cloud.topic").as_string(), "/points/output");
-  EXPECT_EQ(node->get_parameter("output_topic").as_string(), "/points/output");
   EXPECT_EQ(node->get_parameter("queue_size").as_int(), 5);
+  EXPECT_FALSE(node->has_parameter("filter.output_indices"));
   EXPECT_EQ(node->get_parameter("sync.policy").as_string(), "ExactTime");
   EXPECT_EQ(node->get_parameter("sync.queue_size").as_int(), 10);
   EXPECT_DOUBLE_EQ(node->get_parameter("sync.slop").as_double(), 0.05);

@@ -538,7 +538,7 @@ class PipelineEditor(Plugin):
     def _parameter_description(self, parameter_name: str) -> str:
         descriptions = {
             "queue_size": "Subscription queue depth for incoming point cloud messages.",
-            "filter.output_indices": "Publish the selected point indices in addition to the filtered cloud.",
+            "filter.output_indices": "Publish the selected point indices instead of the filtered cloud.",
             "filter.leaf_size_x": "Voxel leaf size along the X axis in meters.",
             "filter.leaf_size_y": "Voxel leaf size along the Y axis in meters.",
             "filter.leaf_size_z": "Voxel leaf size along the Z axis in meters.",

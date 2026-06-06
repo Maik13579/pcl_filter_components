@@ -14,7 +14,7 @@ Concrete packages such as `pcl_filter_xyzi`, `pcl_filter_xyz`,
 metadata exports, and `rclcpp_components` registrations.
 
 Single-cloud filters expose one `cloud` input and `cloud` plus `indices`
-outputs. `filter.output_indices` selects whether optional-index filters publish
-the filtered cloud or point indices. `PointCloudMergerComponent` exposes
-`input_1` and `input_2` cloud inputs and one `cloud` output, using the shared
-multi-port lifecycle base instead of owning subscriptions directly.
+outputs. `filter.output_indices` selects whether filters publish the filtered
+cloud or point indices through the main multi-port lifecycle base.
+`PointCloudMergerComponent` exposes `input_1` and `input_2` cloud inputs and
+one `cloud` output through the same base.

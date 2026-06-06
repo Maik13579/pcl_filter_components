@@ -251,8 +251,8 @@ std::vector<rclcpp::Parameter> PipelineFactoryNode::parametersForNode(const Pipe
     parameters.push_back(parameterFromString(name, value));
   }
 
-  const auto input_topics = inputTopicsForNode(node.id);
-  for (const auto & [port, topic] : input_topics) {
+  const auto inbound_topics = inputTopicsForNode(node.id);
+  for (const auto & [port, topic] : inbound_topics) {
     if (!topic.empty()) {
       parameters.push_back(rclcpp::Parameter{
           inputParameterName(port),

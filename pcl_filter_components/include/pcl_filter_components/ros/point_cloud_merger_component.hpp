@@ -4,8 +4,8 @@
 #ifndef PCL_FILTER_COMPONENTS__ROS__POINT_CLOUD_MERGER_COMPONENT_HPP_
 #define PCL_FILTER_COMPONENTS__ROS__POINT_CLOUD_MERGER_COMPONENT_HPP_
 
+#include <array>
 #include <memory>
-#include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -51,17 +51,28 @@ public:
   }
 
 protected:
-  static std::vector<PortDescriptor> inputPorts()
+  static std::array<PortDescriptor, 2> inputPorts()
   {
-    return {
-      {"input_1", "/points/input_a", "First input point cloud topic."},
-      {"input_2", "/points/input_b", "Second input point cloud topic."},
-    };
+    return {{
+      Base::template inputPort<CloudAdapter>(
+        "input_1",
+        "/points/input_a",
+        "First input point cloud topic."),
+      Base::template inputPort<CloudAdapter>(
+        "input_2",
+        "/points/input_b",
+        "Second input point cloud topic."),
+    }};
   }
 
-  static std::vector<PortDescriptor> outputPorts()
+  static std::array<PortDescriptor, 1> outputPorts()
   {
-    return {{"cloud", "/points/output", "Merged output point cloud topic."}};
+    return {{
+      Base::template outputPort<CloudAdapter>(
+        "cloud",
+        "/points/output",
+        "Merged output point cloud topic."),
+    }};
   }
 
   void configureFilter() override
