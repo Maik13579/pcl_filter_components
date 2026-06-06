@@ -149,6 +149,56 @@ def test_graph_accepts_repeated_input_ports() -> None:
     graph.validate()
 
 
+def test_graph_rejects_duplicate_filter_input_port() -> None:
+    graph = Graph(
+        nodes=[
+            Node(id="/a", type="topic", topic="/a", input_type="PointXYZI", output_type="PointXYZI"),
+            Node(id="/b", type="topic", topic="/b", input_type="PointXYZI", output_type="PointXYZI"),
+            Node(
+                id="PointCloudMergerXYZI_1",
+                name="PointCloudMergerXYZI_1",
+                type="filter",
+                package="pcl_filter_components",
+                filter="PointCloudMergerXYZI",
+                input_type="PointXYZI,PointXYZI",
+                output_type="PointXYZI",
+            ),
+        ],
+        edges=[
+            Edge(PortRef("/a", "out"), PortRef("PointCloudMergerXYZI_1", "input_1")),
+            Edge(PortRef("/b", "out"), PortRef("PointCloudMergerXYZI_1", "input_1")),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="already connected"):
+        graph.validate()
+
+
+def test_graph_rejects_duplicate_filter_output_port() -> None:
+    graph = Graph(
+        nodes=[
+            Node(
+                id="VoxelGridXYZI_1",
+                name="VoxelGridXYZI_1",
+                type="filter",
+                package="pcl_filter_components",
+                filter="VoxelGridXYZI",
+                input_type="PointXYZI",
+                output_type="PointXYZI,PointIndices",
+            ),
+            Node(id="/a", type="topic", topic="/a", input_type="PointXYZI", output_type="PointXYZI"),
+            Node(id="/b", type="topic", topic="/b", input_type="PointXYZI", output_type="PointXYZI"),
+        ],
+        edges=[
+            Edge(PortRef("VoxelGridXYZI_1", "out"), PortRef("/a", "in")),
+            Edge(PortRef("VoxelGridXYZI_1", "out"), PortRef("/b", "in")),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="already connected"):
+        graph.validate()
+
+
 def test_graph_rejects_duplicate_topic_nodes() -> None:
     graph = Graph(
         nodes=[

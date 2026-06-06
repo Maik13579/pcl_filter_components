@@ -159,6 +159,68 @@ edges:
   EXPECT_EQ(graph.edges[1].to.port, "input_2");
 }
 
+TEST(PipelineGraph, RejectsDuplicateFilterInputPort)
+{
+  const auto path = writeTempPipeline(R"(
+version: 1
+nodes:
+  - type: topic
+    topic: /a
+    input_type: PointXYZI
+    output_type: PointXYZI
+  - type: topic
+    topic: /b
+    input_type: PointXYZI
+    output_type: PointXYZI
+  - type: filter
+    name: PointCloudMergerXYZI_1
+    package: pcl_filter_components
+    filter: PointCloudMergerXYZI
+    input_type: PointXYZI,PointXYZI
+    output_type: PointXYZI
+edges:
+  - from: {node: /a, port: out}
+    to: {node: PointCloudMergerXYZI_1, port: input_1}
+  - from: {node: /b, port: out}
+    to: {node: PointCloudMergerXYZI_1, port: input_1}
+)");
+
+  EXPECT_THROW(
+    (void)pcl_filter_components::pipeline::loadPipelineGraph(path),
+    std::runtime_error);
+}
+
+TEST(PipelineGraph, RejectsDuplicateFilterOutputPort)
+{
+  const auto path = writeTempPipeline(R"(
+version: 1
+nodes:
+  - type: filter
+    name: VoxelGridXYZI_1
+    package: pcl_filter_components
+    filter: VoxelGridXYZI
+    input_type: PointXYZI
+    output_type: PointXYZI,PointIndices
+  - type: topic
+    topic: /a
+    input_type: PointXYZI
+    output_type: PointXYZI
+  - type: topic
+    topic: /b
+    input_type: PointXYZI
+    output_type: PointXYZI
+edges:
+  - from: {node: VoxelGridXYZI_1, port: out}
+    to: {node: /a, port: in}
+  - from: {node: VoxelGridXYZI_1, port: out}
+    to: {node: /b, port: in}
+)");
+
+  EXPECT_THROW(
+    (void)pcl_filter_components::pipeline::loadPipelineGraph(path),
+    std::runtime_error);
+}
+
 TEST(PipelineGraph, RejectsDuplicateTopicNodes)
 {
   const auto path = writeTempPipeline(R"(

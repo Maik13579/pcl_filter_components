@@ -150,6 +150,7 @@ class NodeItem(QGraphicsRectItem):
         self.output_port = QGraphicsEllipseItem(output_pos.x(), output_pos.y(), 12, 12, self)
         self.input_port.setBrush(self.editor.theme_color("text"))
         self.output_port.setBrush(self.editor.theme_color("text"))
+        self.update_port_visibility()
 
     def paint(self, painter, option, widget=None) -> None:
         if self.isSelected():
@@ -199,6 +200,14 @@ class NodeItem(QGraphicsRectItem):
 
     def output_port_name(self, item) -> str:
         return "out"
+
+    def update_port_visibility(self) -> None:
+        if self.node.type != "filter":
+            self.input_port.setVisible(True)
+            self.output_port.setVisible(True)
+            return
+        self.input_port.setVisible(bool(self.editor.available_input_ports(self.node)))
+        self.output_port.setVisible(bool(self.editor.available_output_ports(self.node)))
 
     def _port_label(self) -> str:
         if self.node.type == "topic":
@@ -494,6 +503,7 @@ class PipelineEditor(Plugin):
                 input_type=export.input_type,
                 output_type=export.output_type,
                 parameters=self._default_parameters(export.filter),
+                sync=self._default_sync() if self._has_multiple_input_types(export.input_type) else {},
                 position={"x": x, "y": y},
             )
         )
@@ -595,6 +605,47 @@ class PipelineEditor(Plugin):
             options.append((port, stream_type, label))
         return options
 
+    def _canonical_port(self, node: Node, port: str, outgoing: bool) -> str:
+        options = self._port_options(node, outgoing)
+        if not options:
+            return port or ("out" if outgoing else "in")
+        if not port or port in {"in", "out"}:
+            return options[0][0] if len(options) > 1 else ("out" if outgoing else "in")
+        valid_ports = {option_port for option_port, _stream_type, _label in options}
+        return port if port in valid_ports else port
+
+    def _canonical_input_port(self, node: Node, port: str) -> str:
+        return self._canonical_port(node, port, False)
+
+    def _canonical_output_port(self, node: Node, port: str) -> str:
+        return self._canonical_port(node, port, True)
+
+    def _occupied_input_ports(self, node: Node) -> set[str]:
+        return {
+            self._canonical_input_port(node, edge.target.port)
+            for edge in self.graph.edges
+            if edge.target.node == node.id and node.type == "filter"
+        }
+
+    def _occupied_output_ports(self, node: Node) -> set[str]:
+        return {
+            self._canonical_output_port(node, edge.source.port)
+            for edge in self.graph.edges
+            if edge.source.node == node.id and node.type == "filter"
+        }
+
+    def available_input_ports(self, node: Node) -> list[tuple[str, str, str]]:
+        if node.type != "filter":
+            return []
+        occupied = self._occupied_input_ports(node)
+        return [(port, stream_type, label) for port, stream_type, label in self._port_options(node, False) if port not in occupied]
+
+    def available_output_ports(self, node: Node) -> list[tuple[str, str, str]]:
+        if node.type != "filter":
+            return []
+        occupied = self._occupied_output_ports(node)
+        return [(port, stream_type, label) for port, stream_type, label in self._port_options(node, True) if port not in occupied]
+
     def _resolve_source_port(
         self,
         source: NodeItem,
@@ -604,16 +655,28 @@ class PipelineEditor(Plugin):
     ) -> str | None:
         if source.node.type != "filter" or source_port != "out":
             return source_port
-        options = self._port_options(source.node, True)
+        options = self.available_output_ports(source.node)
         if len(options) <= 1:
-            return source_port
+            if not options:
+                QMessageBox.warning(
+                    self.widget,
+                    "Output Already Connected",
+                    f"All outputs on {source.node.id} are already connected.",
+                )
+                return None
+            return options[0][0] if len(self._port_options(source.node, True)) > 1 else source_port
         target_type = self._edge_type(target.node, False, target_port)
         if target_type:
             matches = [port for port, stream_type, _label in options if stream_type == target_type]
             if len(matches) == 1:
                 return matches[0]
             if not matches:
-                return source_port
+                QMessageBox.warning(
+                    self.widget,
+                    "Output Already Connected",
+                    f"No compatible free output on {source.node.id}.",
+                )
+                return None
         labels = [label for _port, _stream_type, label in options]
         label, ok = QInputDialog.getItem(self.widget, "Select Output", "Output", labels, 0, False)
         if not ok:
@@ -626,9 +689,16 @@ class PipelineEditor(Plugin):
     def _resolve_source_port_for_new_topic(self, source: NodeItem, source_port: str) -> str | None:
         if source.node.type != "filter" or source_port != "out":
             return source_port
-        options = self._port_options(source.node, True)
+        options = self.available_output_ports(source.node)
         if len(options) <= 1:
-            return source_port
+            if not options:
+                QMessageBox.warning(
+                    self.widget,
+                    "Output Already Connected",
+                    f"All outputs on {source.node.id} are already connected.",
+                )
+                return None
+            return options[0][0] if len(self._port_options(source.node, True)) > 1 else source_port
         labels = [label for _port, _stream_type, label in options]
         label, ok = QInputDialog.getItem(self.widget, "Select Output", "Output", labels, 0, False)
         if not ok:
@@ -642,14 +712,28 @@ class PipelineEditor(Plugin):
         if target.node.type != "filter" or target_port != "in":
             return target_port
         options = self._port_options(target.node, False)
+        occupied = self._occupied_input_ports(target.node)
         if len(options) <= 1:
+            canonical = self._canonical_input_port(target.node, target_port)
+            if canonical in occupied:
+                QMessageBox.warning(self.widget, "Input Already Connected", f"{target.node.id} input is already connected.")
+                return None
             return target_port
         source_type = self._edge_type(source.node, True, source_port)
-        matches = [(port, label) for port, stream_type, label in options if not source_type or stream_type == source_type]
+        matches = [
+            (port, label)
+            for port, stream_type, label in options
+            if (not source_type or stream_type == source_type) and port not in occupied
+        ]
         if len(matches) == 1:
             return matches[0][0]
         if not matches:
-            return target_port
+            QMessageBox.warning(
+                self.widget,
+                "Input Already Connected",
+                f"All compatible inputs on {target.node.id} are already connected.",
+            )
+            return None
         label, ok = QInputDialog.getItem(self.widget, "Select Input", "Input", [label for _port, label in matches], 0, False)
         if not ok:
             return None
@@ -731,6 +815,7 @@ class PipelineEditor(Plugin):
         )
         self.graph.edges.append(edge)
         self._add_edge_item(edge, source, target)
+        self._refresh_port_visibility()
         self.status.setText(f"Connected {source.node.id} -> {target.node.id}")
 
     def _create_topic_between(
@@ -942,6 +1027,7 @@ class PipelineEditor(Plugin):
                 return True
             edge_item.edge.target.node = topic_item.node.id
         self._rebuild_edges()
+        self._refresh_port_visibility()
         self.status.setText(f"Rewired to {topic_item.node.id}")
         return True
 
@@ -985,6 +1071,10 @@ class PipelineEditor(Plugin):
         self.scene.addItem(item)
         self.edge_items.append(item)
 
+    def _refresh_port_visibility(self) -> None:
+        for item in self.items_by_id.values():
+            item.update_port_visibility()
+
     def refresh_edges(self) -> None:
         for edge in self.edge_items:
             edge.refresh()
@@ -1008,6 +1098,7 @@ class PipelineEditor(Plugin):
             self.scene.removeItem(item)
             self.items_by_id.pop(item.node.id, None)
         self._rebuild_edges()
+        self._refresh_port_visibility()
 
     def edit_selected(self) -> None:
         selected_nodes = self._selected_node_items()
@@ -1069,8 +1160,10 @@ class PipelineEditor(Plugin):
         topic_edit: QLineEdit | None = None
         parameter_widgets: dict[str, QLineEdit | QCheckBox] = {}
         qos_widgets: dict[str, QLineEdit | QComboBox] = {}
-        sync_editor: QTextEdit | None = None
+        sync_widgets: dict[str, QLineEdit | QComboBox] = {}
         if node.type == "filter":
+            if self._filter_has_multiple_inputs(node) and not node.sync:
+                node.sync = self._default_sync()
             tabs = QTabWidget(dialog)
             general = QWidget(dialog)
             general_form = QFormLayout(general)
@@ -1110,10 +1203,17 @@ class PipelineEditor(Plugin):
             if self._filter_has_multiple_inputs(node):
                 sync = QWidget(dialog)
                 sync_form = QFormLayout(sync)
-                sync_editor = QTextEdit(dialog)
-                sync_editor.setMinimumHeight(120)
-                sync_editor.setPlainText(json.dumps(node.sync, indent=2))
-                sync_form.addRow("Settings", sync_editor)
+                policy = QComboBox(dialog)
+                policy.addItems(["ExactTime", "ApproximateTime"])
+                policy.setCurrentText(str(node.sync.get("policy", "ExactTime")))
+                sync_widgets["policy"] = policy
+                sync_form.addRow("Policy", policy)
+                queue_size = QLineEdit(str(node.sync.get("queue_size", 10)), dialog)
+                sync_widgets["queue_size"] = queue_size
+                sync_form.addRow("Queue size", queue_size)
+                slop = QLineEdit(str(node.sync.get("slop", 0.05)), dialog)
+                sync_widgets["slop"] = slop
+                sync_form.addRow("Slop seconds", slop)
                 tabs.addTab(sync, "Sync")
             layout.addWidget(tabs)
         else:
@@ -1151,12 +1251,12 @@ class PipelineEditor(Plugin):
                     key: self._parameter_widget_value(widget, node.parameters[key])
                     for key, widget in parameter_widgets.items()
                 }
-                if sync_editor is not None:
-                    try:
-                        node.sync = json.loads(sync_editor.toPlainText() or "{}")
-                    except json.JSONDecodeError as error:
-                        QMessageBox.critical(self.widget, "Invalid Sync JSON", str(error))
-                        return
+                if sync_widgets:
+                    node.sync = {
+                        "policy": self._qos_widget_text(sync_widgets["policy"]),
+                        "queue_size": self._parse_typed_scalar(self._qos_widget_text(sync_widgets["queue_size"]), 10),
+                        "slop": self._parse_typed_scalar(self._qos_widget_text(sync_widgets["slop"]), 0.05),
+                    }
             elif topic_edit is not None:
                 if not self._rename_node(node, topic_edit.text().strip()):
                     return
@@ -1184,7 +1284,13 @@ class PipelineEditor(Plugin):
         return ", ".join(dict.fromkeys(ports)) or "unknown"
 
     def _filter_has_multiple_inputs(self, node: Node) -> bool:
-        return "," in node.input_type or ";" in node.input_type
+        return self._has_multiple_input_types(node.input_type)
+
+    def _has_multiple_input_types(self, input_type: str) -> bool:
+        return len(self._stream_types(input_type)) > 1
+
+    def _default_sync(self) -> dict[str, object]:
+        return {"policy": "ExactTime", "queue_size": 10, "slop": 0.05}
 
     def _rename_node(self, node: Node, new_id: str) -> bool:
         if not new_id:
@@ -1310,3 +1416,4 @@ class PipelineEditor(Plugin):
             target = self.items_by_id.get(edge.target.node)
             if source and target:
                 self._add_edge_item(edge, source, target)
+        self._refresh_port_visibility()

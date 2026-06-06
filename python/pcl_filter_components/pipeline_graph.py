@@ -123,6 +123,21 @@ class Graph:
                     f"type mismatch: {edge.source.node} produces {source_type}, "
                     f"{edge.target.node} expects {target_type}"
                 )
+        used_inputs: set[tuple[str, str]] = set()
+        used_outputs: set[tuple[str, str]] = set()
+        for edge in self.edges:
+            source_node = nodes_by_id[edge.source.node]
+            target_node = nodes_by_id[edge.target.node]
+            if source_node.type == "filter":
+                key = (source_node.id, _canonical_port(source_node.output_type, edge.source.port, True))
+                if key in used_outputs:
+                    raise ValueError(f"filter output {source_node.id}:{key[1]} is already connected")
+                used_outputs.add(key)
+            if target_node.type == "filter":
+                key = (target_node.id, _canonical_port(target_node.input_type, edge.target.port, False))
+                if key in used_inputs:
+                    raise ValueError(f"filter input {target_node.id}:{key[1]} is already connected")
+                used_inputs.add(key)
         topic_names = [node.topic for node in self.nodes if node.type == "topic" and node.topic]
         if len(topic_names) != len(set(topic_names)):
             raise ValueError("topic names must be unique")
@@ -214,3 +229,17 @@ def _type_for_port(value: str, port: str, outgoing: bool) -> str:
         if port == stream_type or port == _port_name_for_type(stream_type, index, len(types), outgoing):
             return stream_type
     return types[0] if outgoing else ""
+
+
+def _canonical_port(value: str, port: str, outgoing: bool) -> str:
+    types = _split_types(value)
+    default_port = "out" if outgoing else "in"
+    if not types:
+        return port or default_port
+    if not port or port in {"in", "out"}:
+        return _port_name_for_type(types[0], 0, len(types), outgoing) if len(types) > 1 else default_port
+    valid_ports = {
+        _port_name_for_type(stream_type, index, len(types), outgoing)
+        for index, stream_type in enumerate(types)
+    }
+    return port if port in valid_ports else port

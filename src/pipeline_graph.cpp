@@ -128,6 +128,24 @@ std::string typeForPort(const std::string & value, const std::string & port, boo
   return outgoing ? types.front() : std::string{};
 }
 
+std::string canonicalPort(const std::string & value, const std::string & port, bool outgoing)
+{
+  const auto types = splitTypes(value);
+  const auto default_port = outgoing ? std::string{"out"} : std::string{"in"};
+  if (types.empty()) {
+    return port.empty() ? default_port : port;
+  }
+  if (port.empty() || port == "in" || port == "out") {
+    return types.size() > 1U ? portNameForType(types.front(), 0U, types.size(), outgoing) : default_port;
+  }
+  for (size_t index = 0; index < types.size(); ++index) {
+    if (port == portNameForType(types[index], index, types.size(), outgoing)) {
+      return port;
+    }
+  }
+  return port;
+}
+
 std::string nodeTypeForEdge(const PipelineNode & node, bool outgoing, const std::string & port)
 {
   if (node.type == "topic") {
@@ -265,6 +283,35 @@ void validatePipelineGraph(const PipelineGraph & graph)
       throw std::runtime_error(
         "Type-incompatible edge from '" + edge.from.node + "' (" + source_type + ") to '" +
         edge.to.node + "' (" + target_type + ")");
+    }
+  }
+
+  std::set<std::pair<std::string, std::string>> used_inputs;
+  std::set<std::pair<std::string, std::string>> used_outputs;
+  for (const auto & edge : graph.edges) {
+    const auto source = std::find_if(
+      graph.nodes.begin(),
+      graph.nodes.end(),
+      [&edge](const auto & node) {return node.id == edge.from.node;});
+    const auto target = std::find_if(
+      graph.nodes.begin(),
+      graph.nodes.end(),
+      [&edge](const auto & node) {return node.id == edge.to.node;});
+    if (source->type == "filter") {
+      const auto key = std::make_pair(
+        source->id,
+        canonicalPort(source->output_type, edge.from.port, true));
+      if (!used_outputs.insert(key).second) {
+        throw std::runtime_error("Filter output '" + key.first + ":" + key.second + "' is already connected");
+      }
+    }
+    if (target->type == "filter") {
+      const auto key = std::make_pair(
+        target->id,
+        canonicalPort(target->input_type, edge.to.port, false));
+      if (!used_inputs.insert(key).second) {
+        throw std::runtime_error("Filter input '" + key.first + ":" + key.second + "' is already connected");
+      }
     }
   }
 }

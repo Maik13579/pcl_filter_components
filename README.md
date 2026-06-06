@@ -128,7 +128,9 @@ to use.
 Double-click behavior:
 
 - Filter node: opens a tabbed editor with General and Parameters tabs. A Sync tab
-  is shown only when the filter metadata declares multiple inputs.
+  is shown only when the filter metadata declares multiple inputs. The Sync tab
+  stores `policy`, `queue_size`, and `slop` settings for exact or approximate
+  input synchronization.
 - Topic node: opens topic and QoS settings. `reliability` and `history` use drop
   downs; `depth` remains a numeric value.
 - Arrow: starts rewiring mode so the arrow can be moved to another compatible
