@@ -1126,7 +1126,7 @@ class PipelineEditor(Plugin):
             target_port,
         )
         topic_name = self._unique_topic(
-            f"~/{self._topic_name_part(source.node)}_{self._topic_name_part(target.node)}"
+            f"/{self._topic_name_part(source.node)}_{self._topic_name_part(target.node)}"
         )
         position = {
             "x": (float(source.pos().x()) + float(target.pos().x())) / 2.0,
@@ -1147,7 +1147,7 @@ class PipelineEditor(Plugin):
     def _create_topic_for_port(self, item: NodeItem, outgoing: bool, port: str) -> NodeItem:
         topic_type = self._edge_type(item.node, outgoing, port)
         direction = "out" if outgoing else "in"
-        topic_name = self._unique_topic(f"~/{self._topic_name_part(item.node)}_{direction}")
+        topic_name = self._unique_topic(f"/{self._topic_name_part(item.node)}_{direction}")
         x = float(item.pos().x())
         y = float(item.pos().y())
         if self.top_down_mode:
@@ -1648,7 +1648,7 @@ class PipelineEditor(Plugin):
 
     def _ros_topic_name(self, topic: str) -> str:
         if topic.startswith("~/"):
-            return "~/" + topic[2:].replace("-", "_")
+            return "/" + topic[2:].strip("/").replace("-", "_")
         return topic.replace("-", "_")
 
     def _collect_port_qos(
