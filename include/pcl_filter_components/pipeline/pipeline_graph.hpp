@@ -21,6 +21,7 @@ struct PipelineEdge
 {
   PipelinePort from;
   PipelinePort to;
+  std::string topic;
 };
 
 struct PipelineNode

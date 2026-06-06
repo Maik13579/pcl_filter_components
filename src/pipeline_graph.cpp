@@ -117,6 +117,7 @@ PipelineGraph loadPipelineGraph(const std::string & path)
     PipelineEdge edge;
     edge.from = parsePort(item["from"]);
     edge.to = parsePort(item["to"]);
+    edge.topic = optionalString(item, "topic");
     graph.edges.push_back(std::move(edge));
   }
 

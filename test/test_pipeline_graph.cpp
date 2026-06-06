@@ -51,6 +51,7 @@ edges:
     to: {node: voxel_1, port: in}
   - from: {node: voxel_1, port: out}
     to: {node: output_1, port: in}
+    topic: /pcl_pipeline/voxel_to_output
 )");
 
   const auto graph = pcl_filter_components::pipeline::loadPipelineGraph(path);
@@ -64,6 +65,7 @@ edges:
   EXPECT_EQ(graph.nodes[1].qos.at("depth"), "5");
   EXPECT_EQ(graph.nodes[1].sync.at("policy"), "ExactTime");
   ASSERT_EQ(graph.edges.size(), 2U);
+  EXPECT_EQ(graph.edges[1].topic, "/pcl_pipeline/voxel_to_output");
 }
 
 TEST(PipelineGraph, RejectsTypeIncompatibleEdges)

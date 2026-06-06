@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import math
 
-from python_qt_binding.QtCore import QRectF, Qt
-from python_qt_binding.QtGui import QColor, QPainter, QPen
+from python_qt_binding.QtCore import QPointF, QRectF, Qt
+from python_qt_binding.QtGui import QColor, QBrush, QPainter, QPen, QPolygonF
 from python_qt_binding.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -13,6 +14,7 @@ from python_qt_binding.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsItem,
     QGraphicsLineItem,
+    QGraphicsPolygonItem,
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsSimpleTextItem,
@@ -20,11 +22,13 @@ from python_qt_binding.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QListWidget,
     QMessageBox,
     QPushButton,
     QMenu,
     QTextEdit,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -35,21 +39,59 @@ from pcl_filter_components.pipeline_graph import Edge, Graph, Node, PortRef, loa
 
 
 class EdgeItem(QGraphicsLineItem):
-    def __init__(self, source: "NodeItem", target: "NodeItem") -> None:
+    def __init__(self, edge: Edge, source: "NodeItem", target: "NodeItem") -> None:
         super().__init__()
+        self.edge = edge
         self.source = source
         self.target = target
+        self.setFlag(QGraphicsItem.ItemIsSelectable)
         self.setZValue(-1)
         self.setPen(QPen(source.editor.theme_color("highlight"), 2))
+        self.arrow = QGraphicsPolygonItem(self)
+        self.arrow.setBrush(QBrush(source.editor.theme_color("highlight")))
+        self.arrow.setPen(QPen(source.editor.theme_color("highlight"), 1))
+        self.label = QGraphicsSimpleTextItem(self._label_text(), self)
+        self.label.setBrush(source.editor.theme_color("text"))
+        self.label.setZValue(1)
         self.refresh()
 
+    def paint(self, painter, option, widget=None) -> None:
+        width = 4 if self.isSelected() else 2
+        self.setPen(QPen(self.source.editor.theme_color("highlight"), width))
+        super().paint(painter, option, widget)
+
     def refresh(self) -> None:
-        self.setLine(
+        line = (
             self.source.sceneBoundingRect().right(),
             self.source.sceneBoundingRect().center().y(),
             self.target.sceneBoundingRect().left(),
             self.target.sceneBoundingRect().center().y(),
         )
+        self.setLine(*line)
+        self.label.setText(self._label_text())
+        bounds = self.label.boundingRect()
+        self.label.setPos(
+            (line[0] + line[2] - bounds.width()) / 2.0,
+            (line[1] + line[3]) / 2.0 - bounds.height() - 4.0,
+        )
+        self._refresh_arrow(QPointF(line[0], line[1]), QPointF(line[2], line[3]))
+
+    def _label_text(self) -> str:
+        return self.edge.topic or f"/pcl_pipeline/{self.edge.source.node}_to_{self.edge.target.node}"
+
+    def _refresh_arrow(self, source: QPointF, target: QPointF) -> None:
+        angle = math.atan2(target.y() - source.y(), target.x() - source.x())
+        size = 11.0
+        back = QPointF(target.x() - math.cos(angle) * size, target.y() - math.sin(angle) * size)
+        left = QPointF(
+            back.x() + math.cos(angle + math.pi / 2.0) * size * 0.45,
+            back.y() + math.sin(angle + math.pi / 2.0) * size * 0.45,
+        )
+        right = QPointF(
+            back.x() + math.cos(angle - math.pi / 2.0) * size * 0.45,
+            back.y() + math.sin(angle - math.pi / 2.0) * size * 0.45,
+        )
+        self.arrow.setPolygon(QPolygonF([target, left, right]))
 
 
 class NodeItem(QGraphicsRectItem):
@@ -109,18 +151,38 @@ class PipelineView(QGraphicsView):
 
     def mouseDoubleClickEvent(self, event) -> None:
         item = self.itemAt(event.pos())
-        while item is not None and not isinstance(item, NodeItem):
+        while item is not None and not isinstance(item, (NodeItem, EdgeItem)):
             item = item.parentItem()
         if isinstance(item, NodeItem):
             item.setSelected(True)
             self.editor.edit_node(item)
             return
+        if isinstance(item, EdgeItem):
+            item.setSelected(True)
+            self.editor.edit_edge(item)
+            return
         super().mouseDoubleClickEvent(event)
 
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.LeftButton and self.editor.handle_port_click(self.itemAt(event.pos())):
+        if event.button() == Qt.LeftButton and self.editor.begin_connection_drag(
+            self.itemAt(event.pos()),
+            self.mapToScene(event.pos()),
+        ):
             return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self.editor.update_connection_drag(self.mapToScene(event.pos())):
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton and self.editor.finish_connection_drag(
+            self.itemAt(event.pos()),
+            self.mapToScene(event.pos()),
+        ):
+            return
+        super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key_Delete:
@@ -154,21 +216,26 @@ class PipelineEditor(Plugin):
         self.items_by_id: dict[str, NodeItem] = {}
         self.edge_items: list[EdgeItem] = []
         self.connection_source: NodeItem | None = None
+        self.connection_preview: QGraphicsLineItem | None = None
 
         self.widget = QWidget()
         layout = QHBoxLayout(self.widget)
+        splitter = QSplitter(Qt.Horizontal)
+        layout.addWidget(splitter)
+        side_widget = QWidget()
         side = QVBoxLayout()
-        layout.addLayout(side, 0)
+        side_widget.setLayout(side)
 
         side.addWidget(QLabel("Filters"))
+        self.filter_search = QLineEdit()
+        self.filter_search.setPlaceholderText("Search filters")
+        side.addWidget(self.filter_search)
         self.filter_list = QListWidget()
-        for export in self.discovery.filters:
-            self.filter_list.addItem(
-                f"{export.package}/{export.filter} [{export.input_type} -> {export.output_type}]"
-            )
+        self.visible_filters: list[FilterExport] = []
+        self._refresh_filter_list()
         side.addWidget(self.filter_list)
 
-        self.status = QLabel("Double-click a filter to add it. Click output dot, then input dot to connect.")
+        self.status = QLabel("Double-click a filter to add it. Drag output dot to input dot to connect.")
         self.status.setWordWrap(True)
         side.addWidget(self.status)
 
@@ -185,12 +252,17 @@ class PipelineEditor(Plugin):
         self.scene.setSceneRect(QRectF(-2000, -1200, 4000, 2400))
         self.scene.setBackgroundBrush(self.theme_color("base"))
         self.view = PipelineView(self.scene, self)
-        layout.addWidget(self.view, 1)
+        splitter.addWidget(side_widget)
+        splitter.addWidget(self.view)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([260, 900])
 
         if add_input is not None:
             add_input.clicked.connect(self._add_input)
         if add_output is not None:
             add_output.clicked.connect(self._add_output)
+        self.filter_search.textChanged.connect(self._refresh_filter_list)
         self.filter_list.itemDoubleClicked.connect(lambda _item: self._add_filter())
         save.clicked.connect(self._save)
         load.clicked.connect(self._load)
@@ -280,9 +352,26 @@ class PipelineEditor(Plugin):
 
     def _selected_filter(self) -> FilterExport | None:
         row = self.filter_list.currentRow()
-        if row < 0 or row >= len(self.discovery.filters):
+        if row < 0 or row >= len(self.visible_filters):
             return None
-        return self.discovery.filters[row]
+        return self.visible_filters[row]
+
+    def _refresh_filter_list(self) -> None:
+        query = self.filter_search.text().strip().lower() if hasattr(self, "filter_search") else ""
+        self.visible_filters = [
+            export
+            for export in self.discovery.filters
+            if not query
+            or query in export.filter.lower()
+            or query in export.package.lower()
+            or query in export.input_type.lower()
+            or query in export.output_type.lower()
+        ]
+        self.filter_list.clear()
+        for export in self.visible_filters:
+            self.filter_list.addItem(
+                f"{export.package}/{export.filter} [{export.input_type} -> {export.output_type}]"
+            )
 
     def _add_filter(self) -> None:
         export = self._selected_filter()
@@ -301,11 +390,38 @@ class PipelineEditor(Plugin):
                 input_type=export.input_type,
                 output_type=export.output_type,
                 optional_output_type=export.optional_output_type,
-                parameters={},
+                parameters=self._default_parameters(export.filter),
                 qos={"reliability": "best_effort", "history": "keep_last", "depth": 5},
                 position={"x": x, "y": y},
             )
         )
+
+    def _default_parameters(self, filter_name: str) -> dict[str, object]:
+        common = {"queue_size": 5, "filter.output_indices": False}
+        filter_defaults: dict[str, dict[str, object]] = {
+            "VoxelGridXYZI": {
+                "filter.leaf_size_x": 0.05,
+                "filter.leaf_size_y": 0.05,
+                "filter.leaf_size_z": 0.05,
+                "filter.invert": False,
+            },
+            "PassThroughXYZI": {
+                "filter.field_name": "z",
+                "filter.min_value": -1.0,
+                "filter.max_value": 2.0,
+                "filter.invert": False,
+            },
+            "CropBoxXYZI": {
+                "filter.min_x": -10.0,
+                "filter.min_y": -10.0,
+                "filter.min_z": -2.0,
+                "filter.max_x": 10.0,
+                "filter.max_y": 10.0,
+                "filter.max_z": 3.0,
+                "filter.invert": False,
+            },
+        }
+        return {**common, **filter_defaults.get(filter_name, {})}
 
     def _selected_node_items(self) -> list[NodeItem]:
         return [item for item in self.scene.selectedItems() if isinstance(item, NodeItem)]
@@ -348,15 +464,26 @@ class PipelineEditor(Plugin):
         for edge in self.graph.edges:
             if edge.source.node == source.node.id and edge.target.node == target.node.id:
                 return
-        self.graph.edges.append(Edge(PortRef(source.node.id, "out"), PortRef(target.node.id, "in")))
-        self._add_edge_item(source, target)
+        edge = Edge(
+            PortRef(source.node.id, "out"),
+            PortRef(target.node.id, "in"),
+            f"/pcl_pipeline/{source.node.id}_to_{target.node.id}",
+        )
+        self.graph.edges.append(edge)
+        self._add_edge_item(edge, source, target)
         self.status.setText(f"Connected {source.node.id} -> {target.node.id}")
 
-    def handle_port_click(self, clicked_item) -> bool:
+    def _port_owner(self, item) -> NodeItem | None:
+        if item is None:
+            return None
+        parent = item.parentItem()
+        return parent if isinstance(parent, NodeItem) else None
+
+    def begin_connection_drag(self, clicked_item, scene_pos: QPointF) -> bool:
         if clicked_item is None:
             return False
-        node_item = clicked_item.parentItem()
-        if not isinstance(node_item, NodeItem):
+        node_item = self._port_owner(clicked_item)
+        if node_item is None:
             return False
         if clicked_item == node_item.output_port:
             if node_item.node.type == "output":
@@ -364,20 +491,48 @@ class PipelineEditor(Plugin):
                 return True
             self.connection_source = node_item
             node_item.setSelected(True)
+            self._set_connection_preview(node_item.output_port.sceneBoundingRect().center(), scene_pos)
             self.status.setText(f"Connection start: {node_item.node.id}. Click a compatible input dot.")
-            return True
-        if clicked_item == node_item.input_port:
-            if self.connection_source is None:
-                self.status.setText("Click an output dot first.")
-                return True
-            source = self.connection_source
-            self.connection_source = None
-            self._connect_nodes(source, node_item)
             return True
         return False
 
-    def _add_edge_item(self, source: NodeItem, target: NodeItem) -> None:
-        item = EdgeItem(source, target)
+    def update_connection_drag(self, scene_pos: QPointF) -> bool:
+        if self.connection_source is None or self.connection_preview is None:
+            return False
+        source = self.connection_source.output_port.sceneBoundingRect().center()
+        self.connection_preview.setLine(source.x(), source.y(), scene_pos.x(), scene_pos.y())
+        return True
+
+    def finish_connection_drag(self, clicked_item, scene_pos: QPointF) -> bool:
+        if self.connection_source is None:
+            return False
+        source = self.connection_source
+        self._clear_connection_preview()
+        self.connection_source = None
+        node_item = self._port_owner(clicked_item)
+        if node_item is None or clicked_item != node_item.input_port:
+            self.status.setText("Connection canceled.")
+            return True
+        self._connect_nodes(source, node_item)
+        return True
+
+    def _set_connection_preview(self, source: QPointF, target: QPointF) -> None:
+        self._clear_connection_preview()
+        self.connection_preview = QGraphicsLineItem()
+        pen = QPen(self.theme_color("highlight"), 2)
+        pen.setStyle(Qt.DashLine)
+        self.connection_preview.setPen(pen)
+        self.connection_preview.setZValue(-0.5)
+        self.connection_preview.setLine(source.x(), source.y(), target.x(), target.y())
+        self.scene.addItem(self.connection_preview)
+
+    def _clear_connection_preview(self) -> None:
+        if self.connection_preview is not None:
+            self.scene.removeItem(self.connection_preview)
+            self.connection_preview = None
+
+    def _add_edge_item(self, edge: Edge, source: NodeItem, target: NodeItem) -> None:
+        item = EdgeItem(edge, source, target)
         self.scene.addItem(item)
         self.edge_items.append(item)
 
@@ -386,27 +541,51 @@ class PipelineEditor(Plugin):
             edge.refresh()
 
     def delete_selected(self) -> None:
-        selected = self._selected_node_items()
-        if not selected:
+        selected_nodes = self._selected_node_items()
+        selected_edges = [item for item in self.scene.selectedItems() if isinstance(item, EdgeItem)]
+        if not selected_nodes and not selected_edges:
             return
-        selected_ids = {item.node.id for item in selected}
+        selected_ids = {item.node.id for item in selected_nodes}
+        selected_edge_ids = {id(item.edge) for item in selected_edges}
         self.graph.nodes = [node for node in self.graph.nodes if node.id not in selected_ids]
         self.graph.edges = [
             edge
             for edge in self.graph.edges
-            if edge.source.node not in selected_ids and edge.target.node not in selected_ids
+            if id(edge) not in selected_edge_ids
+            and edge.source.node not in selected_ids
+            and edge.target.node not in selected_ids
         ]
-        for item in selected:
+        for item in selected_nodes:
             self.scene.removeItem(item)
             self.items_by_id.pop(item.node.id, None)
         self._rebuild_edges()
 
     def edit_selected(self) -> None:
-        selected = self._selected_node_items()
-        if len(selected) != 1:
+        selected_nodes = self._selected_node_items()
+        selected_edges = [item for item in self.scene.selectedItems() if isinstance(item, EdgeItem)]
+        if len(selected_edges) == 1 and not selected_nodes:
+            self.edit_edge(selected_edges[0])
+            return
+        if len(selected_nodes) != 1:
             QMessageBox.warning(self.widget, "Edit", "Select one node.")
             return
-        self.edit_node(selected[0])
+        self.edit_node(selected_nodes[0])
+
+    def edit_edge(self, item: EdgeItem) -> None:
+        dialog = QDialog(self.widget)
+        dialog.setWindowTitle(f"Edit {item.edge.source.node} -> {item.edge.target.node}")
+        layout = QVBoxLayout(dialog)
+        form = QFormLayout(dialog)
+        topic = QLineEdit(item.edge.topic or item._label_text(), dialog)
+        form.addRow("Topic", topic)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec_() == QDialog.Accepted:
+            item.edge.topic = topic.text().strip()
+            item.refresh()
 
     def edit_node(self, item: NodeItem) -> None:
         node = item.node
@@ -505,4 +684,4 @@ class PipelineEditor(Plugin):
             source = self.items_by_id.get(edge.source.node)
             target = self.items_by_id.get(edge.target.node)
             if source and target:
-                self._add_edge_item(source, target)
+                self._add_edge_item(edge, source, target)

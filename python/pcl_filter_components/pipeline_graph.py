@@ -23,9 +23,13 @@ class PortRef:
 class Edge:
     source: PortRef
     target: PortRef
+    topic: str = ""
 
-    def to_dict(self) -> dict[str, dict[str, str]]:
-        return {"from": self.source.to_dict(), "to": self.target.to_dict()}
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {"from": self.source.to_dict(), "to": self.target.to_dict()}
+        if self.topic:
+            data["topic"] = self.topic
+        return data
 
 
 @dataclass
@@ -139,6 +143,7 @@ def graph_from_dict(data: dict[str, Any]) -> Graph:
             Edge(
                 PortRef(item["from"]["node"], item["from"].get("port", "")),
                 PortRef(item["to"]["node"], item["to"].get("port", "")),
+                item.get("topic", ""),
             )
         )
     graph.validate()

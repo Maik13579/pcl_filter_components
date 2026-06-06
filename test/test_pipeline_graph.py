@@ -36,7 +36,11 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
         ],
         edges=[
             Edge(PortRef("input_1", "out"), PortRef("voxel_1", "in")),
-            Edge(PortRef("voxel_1", "out"), PortRef("output_1", "in")),
+            Edge(
+                PortRef("voxel_1", "out"),
+                PortRef("output_1", "in"),
+                "/pcl_pipeline/voxel_to_output",
+            ),
         ],
     )
     path = tmp_path / "pipeline.yaml"
@@ -52,6 +56,7 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
     assert loaded.nodes[1].sync["policy"] == "ExactTime"
     assert loaded.nodes[0].position == {"x": 10.0, "y": 20.0}
     assert len(loaded.edges) == 2
+    assert loaded.edges[1].topic == "/pcl_pipeline/voxel_to_output"
 
 
 def test_graph_rejects_incompatible_custom_types() -> None:
