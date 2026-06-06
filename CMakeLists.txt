@@ -145,6 +145,9 @@ if(BUILD_TESTING)
   target_include_directories(test_pipeline_factory PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
   )
+  target_compile_definitions(test_pipeline_factory PRIVATE
+    PROJECT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  )
   target_link_libraries(test_pipeline_factory ${PROJECT_NAME}_pipeline)
   ament_target_dependencies(test_pipeline_factory
     rclcpp

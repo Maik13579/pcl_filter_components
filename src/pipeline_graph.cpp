@@ -63,6 +63,14 @@ PipelinePort parsePort(const YAML::Node & node)
   return port;
 }
 
+std::string nodeTypeForEdge(const PipelineNode & node, bool outgoing)
+{
+  if (node.type == "topic") {
+    return node.output_type.empty() ? node.input_type : node.output_type;
+  }
+  return outgoing ? node.output_type : node.input_type;
+}
+
 }  // namespace
 
 std::string defaultComponentClass(const std::string & package_name, const std::string & filter)
@@ -91,8 +99,8 @@ PipelineGraph loadPipelineGraph(const std::string & path)
 
   for (const auto & item : root["nodes"]) {
     PipelineNode node;
-    node.id = requireString(item, "id");
     node.type = requireString(item, "type");
+    node.name = optionalString(item, "name");
     node.package_name = optionalString(item, "package");
     node.filter = optionalString(item, "filter");
     node.component_class = optionalString(item, "component_class");
@@ -100,6 +108,13 @@ PipelineGraph loadPipelineGraph(const std::string & path)
     node.output_type = optionalString(item, "output_type");
     node.optional_output_type = optionalString(item, "optional_output_type");
     node.topic = optionalString(item, "topic");
+    if (item["id"]) {
+      node.id = requireString(item, "id");
+    } else if (!node.name.empty()) {
+      node.id = node.name;
+    } else {
+      node.id = node.topic;
+    }
     node.parameters = stringMap(item["parameters"]);
     node.qos = stringMap(item["qos"]);
     node.sync = stringMap(item["sync"]);
@@ -183,8 +198,8 @@ void validatePipelineGraph(const PipelineGraph & graph)
       graph.nodes.begin(),
       graph.nodes.end(),
       [&edge](const auto & node) {return node.id == edge.to.node;});
-    const auto source_type = source->type == "input" ? source->output_type : source->output_type;
-    const auto target_type = target->type == "output" ? target->input_type : target->input_type;
+    const auto source_type = nodeTypeForEdge(*source, true);
+    const auto target_type = nodeTypeForEdge(*target, false);
     if (!source_type.empty() && !target_type.empty() && source_type != target_type) {
       throw std::runtime_error(
         "Type-incompatible edge from '" + edge.from.node + "' (" + source_type + ") to '" +

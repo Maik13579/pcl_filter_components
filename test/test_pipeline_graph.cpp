@@ -29,8 +29,8 @@ nodes:
     topic: /points
     output_type: PointXYZI
     position: {x: 1.0, y: 2.0}
-  - id: voxel_1
-    type: filter
+  - type: filter
+    name: VoxelGridXYZI_1
     package: pcl_filter_components
     filter: VoxelGridXYZI
     input_type: PointXYZI
@@ -44,8 +44,7 @@ nodes:
     type: output
     topic: /filtered
     input_type: PointXYZI
-  - id: topic_1
-    type: topic
+  - type: topic
     topic: /pcl_pipeline/voxel_to_output
     input_type: PointXYZI
     output_type: PointXYZI
@@ -55,10 +54,10 @@ nodes:
     position: {x: 120.0, y: 80.0}
 edges:
   - from: {node: input_1, port: out}
-    to: {node: voxel_1, port: in}
-  - from: {node: voxel_1, port: out}
-    to: {node: topic_1, port: in}
-  - from: {node: topic_1, port: out}
+    to: {node: VoxelGridXYZI_1, port: in}
+  - from: {node: VoxelGridXYZI_1, port: out}
+    to: {node: /pcl_pipeline/voxel_to_output, port: in}
+  - from: {node: /pcl_pipeline/voxel_to_output, port: out}
     to: {node: output_1, port: in}
 )");
 
@@ -109,12 +108,11 @@ TEST(PipelineGraph, RejectsDuplicateTopicNodes)
   const auto path = writeTempPipeline(R"(
 version: 1
 nodes:
-  - id: topic_1
-    type: topic
+  - type: topic
     topic: /duplicate
     input_type: PointXYZI
     output_type: PointXYZI
-  - id: topic_2
+  - id: /duplicate_2
     type: topic
     topic: /duplicate
     input_type: PointXYZI

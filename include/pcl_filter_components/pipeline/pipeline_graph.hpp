@@ -31,6 +31,7 @@ struct PipelineNode
 {
   std::string id;
   std::string type;
+  std::string name;
   std::string package_name;
   std::string filter;
   std::string component_class;

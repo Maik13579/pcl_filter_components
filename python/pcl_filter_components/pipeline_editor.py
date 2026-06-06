@@ -72,15 +72,18 @@ class EdgeItem(QGraphicsLineItem):
         self.target = target
         self.setFlag(QGraphicsItem.ItemIsSelectable)
         self.setZValue(-1)
-        self.setPen(QPen(source.editor.theme_color("highlight"), 2))
+        self.setPen(QPen(source.editor.theme_color("mid"), 2))
         self.arrow = QGraphicsPolygonItem(self)
-        self.arrow.setBrush(QBrush(source.editor.theme_color("highlight")))
-        self.arrow.setPen(QPen(source.editor.theme_color("highlight"), 1))
+        self.arrow.setBrush(QBrush(source.editor.theme_color("mid")))
+        self.arrow.setPen(QPen(source.editor.theme_color("mid"), 1))
         self.refresh()
 
     def paint(self, painter, option, widget=None) -> None:
         width = 4 if self.isSelected() else 2
-        self.setPen(QPen(self.source.editor.theme_color("highlight"), width))
+        color = self.source.editor.theme_color("highlight" if self.isSelected() else "mid")
+        self.setPen(QPen(color, width))
+        self.arrow.setBrush(QBrush(color))
+        self.arrow.setPen(QPen(color, 1))
         super().paint(painter, option, widget)
 
     def refresh(self) -> None:
@@ -126,7 +129,7 @@ class NodeItem(QGraphicsRectItem):
         self.border_color = self.editor.theme_color("mid")
         self.setBrush(self.editor.node_fill(node.type))
         self.setPen(QPen(self.border_color, 1.5))
-        title = QGraphicsSimpleTextItem(node.id, self)
+        title = QGraphicsSimpleTextItem(node.name or node.id, self)
         title.setPos(8, 6)
         title.setBrush(self.editor.theme_color("text"))
         type_label = node.filter if node.type == "filter" else node.type
@@ -150,8 +153,10 @@ class NodeItem(QGraphicsRectItem):
     def paint(self, painter, option, widget=None) -> None:
         if self.isSelected():
             self.setPen(QPen(self.editor.theme_color("highlight"), 3.0))
+            self.setBrush(self.editor.selected_node_fill(self.node.type))
         else:
             self.setPen(QPen(self.border_color, 1.5))
+            self.setBrush(self.editor.node_fill(self.node.type))
         super().paint(painter, option, widget)
 
     def itemChange(self, change, value):
@@ -198,7 +203,7 @@ class PipelineView(QGraphicsView):
             return
         if isinstance(item, EdgeHandleItem):
             item.setSelected(True)
-            self.editor.edit_edge(item.edge_item)
+            self.editor.begin_edge_rewire(item.edge_item, self.mapToScene(event.pos()))
             return
         if isinstance(item, EdgeItem):
             item.setSelected(True)
@@ -356,6 +361,15 @@ class PipelineEditor(Plugin):
             return highlight.lighter(112) if highlight.lightness() < 128 else highlight.darker(112)
         return base
 
+    def selected_node_fill(self, node_type: str) -> QColor:
+        fill = self.node_fill(node_type)
+        highlight = self.theme_color("highlight")
+        return QColor(
+            (fill.red() * 2 + highlight.red()) // 3,
+            (fill.green() * 2 + highlight.green()) // 3,
+            (fill.blue() * 2 + highlight.blue()) // 3,
+        )
+
     def _new_id(self, prefix: str) -> str:
         index = 1
         existing = {node.id for node in self.graph.nodes}
@@ -453,8 +467,9 @@ class PipelineEditor(Plugin):
         y = len(self.graph.nodes) * 18.0
         self._add_node(
             Node(
-                id=self._new_id(export.filter.lower()),
+                id=self._new_id(export.filter),
                 type="filter",
+                name=self._new_id(export.filter),
                 package=export.package,
                 filter=export.filter,
                 component_class=export.component_class,
@@ -550,6 +565,12 @@ class PipelineEditor(Plugin):
                 f"{source.node.id} produces {source_type}, but {target.node.id} expects {target_type}.",
             )
             return
+        if source.node.type == "topic":
+            source.node.output_type = source.node.output_type or target_type
+            source.node.input_type = source.node.input_type or target_type
+        if target.node.type == "topic":
+            target.node.output_type = target.node.output_type or source_type
+            target.node.input_type = target.node.input_type or source_type
         for edge in self.graph.edges:
             if edge.source.node == source.node.id and edge.target.node == target.node.id:
                 return
@@ -563,7 +584,6 @@ class PipelineEditor(Plugin):
 
     def _create_topic_between(self, source: NodeItem, target: NodeItem) -> NodeItem:
         topic_type = self._edge_type(source.node, True) or self._edge_type(target.node, False)
-        topic_id = self._new_id("topic")
         topic_name = self._unique_topic(f"/pcl_pipeline/{source.node.id}_to_{target.node.id}")
         position = {
             "x": (float(source.pos().x()) + float(target.pos().x())) / 2.0,
@@ -571,7 +591,7 @@ class PipelineEditor(Plugin):
         }
         self._add_node(
             Node(
-                id=topic_id,
+                id=topic_name,
                 type="topic",
                 topic=topic_name,
                 input_type=topic_type,
@@ -580,7 +600,7 @@ class PipelineEditor(Plugin):
                 position=position,
             )
         )
-        return self.items_by_id[topic_id]
+        return self.items_by_id[topic_name]
 
     def _port_owner(self, item) -> NodeItem | None:
         if item is None:
@@ -597,6 +617,7 @@ class PipelineEditor(Plugin):
 
     def _unique_topic(self, base: str) -> str:
         existing = {node.topic for node in self.graph.nodes if node.type == "topic" and node.topic}
+        existing.update(self.items_by_id.keys())
         if base not in existing:
             return base
         index = 2
@@ -840,7 +861,12 @@ class PipelineEditor(Plugin):
             except json.JSONDecodeError as error:
                 QMessageBox.critical(self.widget, "Invalid JSON", str(error))
                 return
-            new_id = str(data.get("id", node.id)).strip()
+            if node.type == "topic":
+                new_id = str(data.get("topic", node.topic)).strip()
+            elif node.type == "filter":
+                new_id = str(data.get("name", node.name or node.id)).strip()
+            else:
+                new_id = str(data.get("id", node.id)).strip()
             if new_id and new_id != node.id:
                 if new_id in self.items_by_id:
                     QMessageBox.critical(self.widget, "Duplicate Node", f"Node {new_id} already exists.")
@@ -860,18 +886,22 @@ class PipelineEditor(Plugin):
                 node.topic = data.get("topic", node.topic)
                 node.output_type = data.get("output_type", node.output_type)
             elif node.type == "topic":
-                node.topic = data.get("topic", node.topic)
-                topic_type = data.get("type", node.output_type or node.input_type)
-                node.input_type = topic_type
-                node.output_type = topic_type
+                node.topic = node.id
                 node.qos = data.get("qos", node.qos) or {}
+            elif node.type == "filter":
+                node.name = node.id
             elif node.type == "output":
                 node.topic = data.get("topic", node.topic)
                 node.input_type = data.get("input_type", node.input_type)
             self._redraw_node(item)
 
     def _editable_node_data(self, node: Node) -> dict[str, object]:
-        data: dict[str, object] = {"id": node.id, "type": node.type}
+        if node.type == "topic":
+            data: dict[str, object] = {"node_type": node.type}
+        elif node.type == "filter":
+            data = {"name": node.name or node.id, "node_type": node.type}
+        else:
+            data = {"id": node.id, "node_type": node.type}
         if node.type == "input":
             data["topic"] = node.topic
             data["output_type"] = node.output_type
@@ -882,7 +912,7 @@ class PipelineEditor(Plugin):
             return data
         if node.type == "topic":
             data["topic"] = node.topic
-            data["type"] = node.output_type or node.input_type
+            data["topic_type"] = node.output_type or node.input_type
             data["qos"] = node.qos
             return data
         data["input_type"] = node.input_type

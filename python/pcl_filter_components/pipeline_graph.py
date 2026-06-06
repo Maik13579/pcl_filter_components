@@ -42,6 +42,7 @@ class Edge:
 class Node:
     id: str
     type: str
+    name: str = ""
     package: str = ""
     filter: str = ""
     component_class: str = ""
@@ -56,11 +57,15 @@ class Node:
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
-            "id": self.id,
             "type": self.type,
             "position": self.position,
         }
+        if self.type == "filter":
+            data["name"] = self.name or self.id
+        elif self.type != "topic":
+            data["id"] = self.id
         for key in (
+            "name",
             "package",
             "filter",
             "component_class",
@@ -88,12 +93,14 @@ class Graph:
 
     def validate(self, type_by_node: dict[str, str] | None = None) -> None:
         ids: set[str] = set()
+        nodes_by_id: dict[str, Node] = {}
         for node in self.nodes:
             if not node.id:
                 raise ValueError("node id must not be empty")
             if node.id in ids:
                 raise ValueError(f"duplicate node id {node.id}")
             ids.add(node.id)
+            nodes_by_id[node.id] = node
             if node.type not in {"input", "filter", "topic", "output"}:
                 raise ValueError(f"unsupported node type {node.type}")
             if node.type == "filter" and not (node.component_class or (node.package and node.filter)):
@@ -110,17 +117,25 @@ class Graph:
                 raise ValueError(f"edge target {edge.target.node} does not exist")
             if edge.source.node == edge.target.node:
                 raise ValueError(f"self edge on {edge.source.node} is invalid")
+            source_type = self._node_type(nodes_by_id[edge.source.node], outgoing=True)
+            target_type = self._node_type(nodes_by_id[edge.target.node], outgoing=False)
             if type_by_node:
-                source_type = type_by_node.get(edge.source.node)
-                target_type = type_by_node.get(edge.target.node)
-                if source_type and target_type and source_type != target_type:
-                    raise ValueError(
-                        f"type mismatch: {edge.source.node} produces {source_type}, "
-                        f"{edge.target.node} expects {target_type}"
-                    )
+                source_type = type_by_node.get(edge.source.node, source_type)
+                target_type = type_by_node.get(edge.target.node, target_type)
+            if source_type and target_type and source_type != target_type:
+                raise ValueError(
+                    f"type mismatch: {edge.source.node} produces {source_type}, "
+                    f"{edge.target.node} expects {target_type}"
+                )
         topic_names = [node.topic for node in self.nodes if node.type == "topic" and node.topic]
         if len(topic_names) != len(set(topic_names)):
             raise ValueError("topic node names must be unique")
+
+    @staticmethod
+    def _node_type(node: Node, outgoing: bool) -> str:
+        if node.type == "topic":
+            return node.output_type or node.input_type
+        return node.output_type if outgoing else node.input_type
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -135,10 +150,13 @@ def graph_from_dict(data: dict[str, Any]) -> Graph:
     graph = Graph(version=int(data.get("version", 1)))
     graph.editor = data.get("editor", {}) or {}
     for item in data.get("nodes", []):
+        node_type = item["type"]
+        node_id = item.get("id", item.get("name", item.get("topic", "")))
         graph.nodes.append(
             Node(
-                id=item["id"],
-                type=item["type"],
+                id=node_id,
+                type=node_type,
+                name=item.get("name", ""),
                 package=item.get("package", ""),
                 filter=item.get("filter", ""),
                 component_class=item.get("component_class", ""),
