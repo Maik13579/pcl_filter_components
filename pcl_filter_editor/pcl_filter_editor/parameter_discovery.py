@@ -56,7 +56,7 @@ class ComponentParameterDiscovery:
             self._runtime.unload(node_name)
 
     def _list_parameter_names(self, node, node_name: str) -> list[str]:
-        client = node.create_client(ListParameters, f"/{node_name}/list_parameters")
+        client = node.create_client(ListParameters, self._service_name(node_name, "list_parameters"))
         if not client.wait_for_service(timeout_sec=8.0):
             raise RuntimeError(f"Parameter service for {node_name} did not become available")
         request = ListParameters.Request()
@@ -68,7 +68,7 @@ class ComponentParameterDiscovery:
         return list(future.result().result.names)
 
     def _get_parameter_defaults(self, node, node_name: str, names: list[str]) -> dict[str, object]:
-        client = node.create_client(GetParameters, f"/{node_name}/get_parameters")
+        client = node.create_client(GetParameters, self._service_name(node_name, "get_parameters"))
         if not client.wait_for_service(timeout_sec=2.0):
             raise RuntimeError(f"Get-parameters service for {node_name} did not become available")
         request = GetParameters.Request()
@@ -83,7 +83,7 @@ class ComponentParameterDiscovery:
         }
 
     def _describe_parameters(self, node, node_name: str, names: list[str]) -> dict[str, str]:
-        client = node.create_client(DescribeParameters, f"/{node_name}/describe_parameters")
+        client = node.create_client(DescribeParameters, self._service_name(node_name, "describe_parameters"))
         if not client.wait_for_service(timeout_sec=2.0):
             raise RuntimeError(f"Describe-parameters service for {node_name} did not become available")
         request = DescribeParameters.Request()
@@ -105,3 +105,6 @@ class ComponentParameterDiscovery:
             or name.startswith("outputs.")
             or name.startswith("sync.")
         )
+
+    def _service_name(self, node_name: str, service: str) -> str:
+        return f"/{node_name.strip('/')}/{service}"

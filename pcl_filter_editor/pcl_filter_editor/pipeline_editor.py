@@ -560,7 +560,11 @@ class PipelineEditor(Plugin):
         if export is None:
             QMessageBox.warning(self.widget, "No Filter", "Select a filter first.")
             return
-        metadata = self._component_parameter_metadata(export)
+        try:
+            metadata = self._component_parameter_metadata(export)
+        except Exception as error:
+            QMessageBox.critical(self.widget, "Parameter Discovery Failed", str(error))
+            return
         name = self._new_id(export.filter)
         x = len(self.graph.nodes) * 34.0
         y = len(self.graph.nodes) * 18.0
@@ -611,8 +615,11 @@ class PipelineEditor(Plugin):
                 input_type=node.input_type,
                 output_type=node.output_type,
             )
-            metadata = self._component_parameter_metadata(export)
-            descriptions = metadata.descriptions
+            try:
+                metadata = self._component_parameter_metadata(export)
+                descriptions = metadata.descriptions
+            except Exception:
+                descriptions = {}
         return descriptions.get(parameter_name, "")
 
     def _selected_node_items(self) -> list[NodeItem]:
