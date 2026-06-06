@@ -1218,8 +1218,11 @@ class PipelineEditor(Plugin):
 
     def _topic_name_part(self, node: Node) -> str:
         name = node.name or node.id
-        name = name.removeprefix("~/").strip("/")
-        return name.replace("/", "_").replace("-", "_") or "node"
+        return self._topic_name_part_for_text(name) or "node"
+
+    def _topic_name_part_for_text(self, text: str) -> str:
+        name = text.removeprefix("~/").strip("/")
+        return name.replace("/", "_").replace("-", "_")
 
     def _topic_type_is_compatible(self, topic: str, topic_type: str, edge_to_ignore: Edge) -> bool:
         for edge in self.graph.edges:
@@ -1803,15 +1806,13 @@ class PipelineEditor(Plugin):
         parameters = dict(node.parameters)
         for port, _stream_type, _label in self._port_options(node, False):
             topic = self._connected_topic(node, port, False)
-            if topic:
-                parameters[f"inputs.{port}.topic"] = topic
+            parameters[f"inputs.{port}.topic"] = topic or self._hidden_port_topic("input", port)
             qos = (node.inputs.get(port, {}) or {}).get("qos", {}) or {}
             for key, value in qos.items():
                 parameters[f"inputs.{port}.qos.{key}"] = value
         for port, _stream_type, _label in self._port_options(node, True):
             topic = self._connected_topic(node, port, True)
-            if topic:
-                parameters[f"outputs.{port}.topic"] = topic
+            parameters[f"outputs.{port}.topic"] = topic or self._hidden_port_topic("output", port)
             qos = (node.outputs.get(port, {}) or {}).get("qos", {}) or {}
             for key, value in qos.items():
                 parameters[f"outputs.{port}.qos.{key}"] = value
@@ -1819,6 +1820,9 @@ class PipelineEditor(Plugin):
             if self._filter_has_multiple_inputs(node):
                 parameters[f"sync.{key}"] = value
         return parameters
+
+    def _hidden_port_topic(self, direction: str, port: str) -> str:
+        return f"~/.{direction}/{self._topic_name_part_for_text(port) or 'port'}"
 
     def _sanitize_filter_parameters(self, node: Node) -> None:
         if node.type != "filter":
