@@ -11,11 +11,14 @@ representation used by the implementation. Topic nodes are graph bindings: they
 name ROS topics that enter, leave, or connect parts of the graph. Topic nodes
 are not loaded as components.
 
+![Filter Component Pipeline Editor](filter_component_editor/doc/editor.png)
+
 ## Table of Contents
 
 - [Pipeline Model](#pipeline-model)
 - [Packages](#packages)
 - [Architecture](#architecture)
+- [Editor](#editor)
 - [Graph YAML](#graph-yaml)
 
 ## Pipeline Model
@@ -84,6 +87,17 @@ They can also export logical type aliases:
   type_adapter="example_package::ros::ExampleAdapter"
   message_type="example_interfaces/msg/Example"/>
 ```
+
+## Editor
+
+`filter_component_editor` provides an rqt plugin for building pipeline graphs
+visually. It discovers installed filter components and logical stream types,
+lets users place filter and topic nodes, connect named ports, edit parameters
+and QoS, and save the result as portable YAML.
+
+The editor also runs a background pipeline for parameter discovery and graph
+validation while the graph is edited. The saved YAML is the artifact consumed by
+`filter_component_factory` when launching the pipeline.
 
 ## Graph YAML
 
