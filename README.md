@@ -6,10 +6,10 @@ topics through named, typed ports.
 
 A filter node is a ROS 2 lifecycle component that performs one processing step.
 It declares the streams it consumes and produces, exposes parameters for its
-operation, and uses typed adapters to convert between ROS messages and the data
-representation used by the implementation. Topic nodes are graph bindings: they
-name ROS topics that enter, leave, or connect parts of the graph. Topic nodes
-are not loaded as components.
+operation, and uses [type adapters](https://ros.org/reps/rep-2007.html) to
+convert between ROS messages and the data representation used by the
+implementation. Topic nodes are graph bindings: they name ROS topics that enter,
+leave, or connect parts of the graph. Topic nodes are not loaded as components.
 
 ![Filter Component Pipeline Editor](filter_component_editor/doc/editor.png)
 
