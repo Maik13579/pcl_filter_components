@@ -1,18 +1,18 @@
 <library path="filter_component_editor">
   <class
-    name="PCL Pipeline Editor"
+    name="Filter Component Pipeline Editor"
     type="filter_component_editor.pipeline_editor.PipelineEditor"
     base_class_type="rqt_gui_py::Plugin">
-    <description>Visual editor for PCL filter component pipelines.</description>
+    <description>Visual editor for filter component pipelines.</description>
     <qtgui>
       <group>
         <label>Perception</label>
         <icon type="theme">applications-engineering</icon>
-        <statustip>Plugins for point cloud processing pipelines.</statustip>
+        <statustip>Plugins for filter component processing pipelines.</statustip>
       </group>
-      <label>PCL Pipeline Editor</label>
+      <label>Filter Component Pipeline Editor</label>
       <icon type="theme">insert-link</icon>
-      <statustip>Create and save PCL filter component pipelines.</statustip>
+      <statustip>Create and save filter component pipelines.</statustip>
     </qtgui>
   </class>
 </library>

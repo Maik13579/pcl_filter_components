@@ -2,9 +2,10 @@
 
 ![](doc/editor.png)
 
-`filter_component_editor` provides the `PCL Pipeline Editor` rqt plugin. It is a graph
-editor for saved YAML pipelines, with a live pipeline running in the background
-to discover component parameters and validate the graph while it is edited.
+`filter_component_editor` provides the `Filter Component Pipeline Editor` rqt
+plugin. It is a graph editor for saved YAML pipelines, with a live pipeline
+running in the background to discover component parameters and validate the
+graph while it is edited.
 
 ## Editing Model
 
