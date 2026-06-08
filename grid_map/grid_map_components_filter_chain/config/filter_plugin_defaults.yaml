@@ -1,0 +1,78 @@
+gridMapFilters/BufferNormalizerFilter: {}
+
+gridMapFilters/ThresholdFilter:
+  layer: elevation
+  lower_threshold: 0.0
+  set_to: 0.0
+
+gridMapFilters/MinInRadiusFilter:
+  input_layer: elevation
+  output_layer: min_in_radius
+  radius: 0.05
+
+gridMapFilters/MeanInRadiusFilter:
+  input_layer: elevation
+  output_layer: mean_in_radius
+  radius: 0.05
+
+gridMapFilters/NormalVectorsFilter:
+  algorithm: area
+  input_layer: elevation
+  normal_vector_positive_axis: z
+  output_layers_prefix: normal_vectors_
+  parallelization_enabled: false
+  radius: 0.05
+
+gridMapFilters/CurvatureFilter:
+  input_layer: elevation
+  output_layer: curvature
+
+gridMapFilters/NormalColorMapFilter:
+  input_layers_prefix: normal_vectors_
+  output_layer: normal_color
+
+gridMapFilters/LightIntensityFilter:
+  input_layers_prefix: normal_vectors_
+  light_direction: [0.0, 0.0, 1.0]
+  output_layer: light_intensity
+
+gridMapFilters/MathExpressionFilter:
+  expression: elevation
+  output_layer: math_expression
+
+gridMapFilters/SlidingWindowMathExpressionFilter:
+  expression: meanOfFinites
+  input_layer: elevation
+  output_layer: sliding_window_math_expression
+  window_size: 3
+
+gridMapFilters/DuplicationFilter:
+  input_layer: elevation
+  output_layer: elevation_copy
+
+gridMapFilters/DeletionFilter:
+  layers: [elevation]
+
+gridMapFilters/ColorFillFilter:
+  blue: 0
+  green: 0
+  mask_layer: mask
+  output_layer: color
+  red: 0
+
+gridMapFilters/ColorMapFilter:
+  input_layer: elevation
+  "max/color": [255, 0, 0]
+  "max/value": 1.0
+  "min/color": [0, 0, 255]
+  "min/value": 0.0
+  output_layer: color
+
+gridMapFilters/ColorBlendingFilter:
+  background_layer: color_background
+  foreground_layer: color_foreground
+  opacity: 0.5
+  output_layer: color
+
+gridMapFilters/SetBasicLayersFilter:
+  layers: [elevation]

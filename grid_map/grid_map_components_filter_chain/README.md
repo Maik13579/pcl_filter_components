@@ -27,3 +27,18 @@ filters:
     type: gridMapFilters/BufferNormalizerFilter
     params: filters.filter1.params
 ```
+
+## Grid Map Filter Defaults
+
+The editor has to create and configure filter-chain plugins before live map
+input is available so it can build a runnable graph and expose editable
+parameters. That means every filter needs startup-safe defaults for all
+configure-time parameters.
+
+Upstream `grid_map_filters` plugins require parameters such as `input_layer`,
+`output_layer`, `radius`, and color values, but they do not provide discoverable
+defaults through pluginlib metadata. This package therefore installs
+`config/filter_plugin_defaults.yaml` and links it from the `RosFilterChainGridMap`
+export with `chain_plugin_defaults`. The editor reads that YAML file and seeds
+the defaults when a grid-map filter is added. Users should then edit the seeded
+values to match their map layers and intended processing chain.

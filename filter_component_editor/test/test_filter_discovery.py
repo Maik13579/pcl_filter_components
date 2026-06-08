@@ -6,6 +6,7 @@ from pathlib import Path
 from filter_component_editor.filter_discovery import (
     FilterExport,
     discover_filter_plugins,
+    load_filter_plugin_defaults,
     parse_filter_plugin_xml,
 )
 
@@ -52,6 +53,28 @@ def test_parse_filter_plugin_xml_reads_filter_base_plugins(tmp_path: Path) -> No
     assert plugins[0].type == "filters::IncrementFilter<int>"
     assert plugins[0].base_class_type == "filters::FilterBase<int>"
     assert plugins[0].description == "Increment an int."
+
+
+def test_load_filter_plugin_defaults_reads_yaml_mapping(tmp_path: Path) -> None:
+    defaults_yaml = tmp_path / "defaults.yaml"
+    defaults_yaml.write_text(
+        """gridMapFilters/ThresholdFilter:
+  layer: elevation
+  lower_threshold: 0.0
+  set_to: 0.0
+gridMapFilters/BufferNormalizerFilter: {}
+""",
+        encoding="utf-8",
+    )
+
+    defaults = load_filter_plugin_defaults(defaults_yaml)
+
+    assert defaults["gridMapFilters/ThresholdFilter"] == {
+        "layer": "elevation",
+        "lower_threshold": 0.0,
+        "set_to": 0.0,
+    }
+    assert defaults["gridMapFilters/BufferNormalizerFilter"] == {}
 
 
 def test_installed_filters_increment_plugin_is_discoverable() -> None:

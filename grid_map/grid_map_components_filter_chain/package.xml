@@ -31,6 +31,7 @@
       filter="RosFilterChainGridMap"
       kind="filter_chain"
       chain_data_type="grid_map::GridMap"
+      chain_plugin_defaults="config/filter_plugin_defaults.yaml"
       input="GridMap"
       input_ports="map:GridMap"
       output="GridMap"

@@ -43,18 +43,18 @@ class ComponentParameterDiscovery:
         configure: bool,
     ) -> ParameterMetadata:
         node_name = self._probe_node_name(component_class)
-        self._runtime.load(
-            node_name,
-            {
-                "package": package,
-                "component_class": component_class,
-                "parameters": dict(parameters),
-            },
-            configure=configure,
-        )
-        runtime_node = self._runtime.node
-        full_node_name = self._runtime.loaded[node_name].full_node_name
         try:
+            self._runtime.load(
+                node_name,
+                {
+                    "package": package,
+                    "component_class": component_class,
+                    "parameters": dict(parameters),
+                },
+                configure=configure,
+            )
+            runtime_node = self._runtime.node
+            full_node_name = self._runtime.loaded[node_name].full_node_name
             return self.parameters_for_loaded_node(runtime_node, full_node_name)
         finally:
             try:

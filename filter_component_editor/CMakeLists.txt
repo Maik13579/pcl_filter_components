@@ -18,6 +18,9 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_filter_discovery_py test/test_filter_discovery.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
   )
+  ament_add_pytest_test(test_parameter_discovery_py test/test_parameter_discovery.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+  )
   ament_add_pytest_test(test_pipeline_editor_connections_py test/test_pipeline_editor_connections.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
   )

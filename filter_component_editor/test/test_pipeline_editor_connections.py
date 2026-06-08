@@ -225,6 +225,13 @@ def grid_map_chain_editor_for(graph: Graph) -> PipelineEditor:
             ),
         ],
         filter_plugins=[],
+        filter_plugin_defaults={
+            "gridMapFilters/ThresholdFilter": {
+                "layer": "elevation",
+                "lower_threshold": 0.0,
+                "set_to": 0.0,
+            },
+        },
     )
     editor.parameter_defaults_by_component = {
         "grid_map_components_filter_chain::RosFilterChainGridMapComponent": {"in_place": False}
@@ -508,27 +515,40 @@ def test_filter_chain_live_spec_reloads_on_parameter_change() -> None:
     assert specs["chain"]["parameters"]["in_place"] is True
 
 
-def test_grid_map_filter_chain_live_spec_stays_unconfigured_until_plugin_params_exist() -> None:
+def test_grid_map_chain_filter_defaults_are_seeded_from_discovery() -> None:
+    editor = grid_map_chain_editor_for(Graph())
+
+    assert editor._default_chain_filter_params("gridMapFilters/ThresholdFilter") == {
+        "layer": "elevation",
+        "lower_threshold": 0.0,
+        "set_to": 0.0,
+    }
+
+
+def test_grid_map_filter_chain_live_spec_configures_with_seeded_plugin_params() -> None:
     node = grid_map_chain_node(
         {
             "filters.filter1.name": "threshold",
             "filters.filter1.type": "gridMapFilters/ThresholdFilter",
+            "filters.filter1.params.layer": "elevation",
+            "filters.filter1.params.lower_threshold": 0.0,
+            "filters.filter1.params.set_to": 0.0,
         }
     )
     editor = grid_map_chain_editor_for(Graph(nodes=[node]))
 
     specs = editor._live_component_specs()
 
-    assert specs["grid_map_chain"]["configure"] is False
+    assert "configure" not in specs["grid_map_chain"]
     assert specs["grid_map_chain"]["reload_on_parameter_change"] is True
+    assert specs["grid_map_chain"]["parameters"]["filters.filter1.params.layer"] == "elevation"
 
 
-def test_grid_map_filter_chain_live_spec_configures_after_plugin_params_exist() -> None:
+def test_grid_map_filter_chain_live_spec_uses_normal_configure_path() -> None:
     node = grid_map_chain_node(
         {
             "filters.filter1.name": "threshold",
             "filters.filter1.type": "gridMapFilters/ThresholdFilter",
-            "filters.filter1.params.layer": "elevation",
         }
     )
     editor = grid_map_chain_editor_for(Graph(nodes=[node]))

@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 
 from ament_index_python.resources import get_resources
 from ament_index_python.packages import get_packages_with_prefixes
+import yaml
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class DiscoveryResult:
     filters: list[FilterExport] = field(default_factory=list)
     types: list[TypeExport] = field(default_factory=list)
     filter_plugins: list[FilterPluginExport] = field(default_factory=list)
+    filter_plugin_defaults: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 def _component_classes(package: str, prefix: str) -> set[str]:
@@ -97,6 +99,11 @@ def discover_filters() -> DiscoveryResult:
                         item.attrib.get("chain_data_type", ""),
                         item.attrib.get("chain_param_prefix", "filters") or "filters",
                     )
+                    defaults_path = item.attrib.get("chain_plugin_defaults", "").strip()
+                    if defaults_path:
+                        result.filter_plugin_defaults.update(
+                            load_filter_plugin_defaults(Path(prefix) / "share" / package / defaults_path)
+                        )
 
         for filter_name in package_filters:
             component_class = f"{package}::{filter_name}Component"
@@ -118,6 +125,28 @@ def discover_filters() -> DiscoveryResult:
                 )
             )
     return result
+
+
+def load_filter_plugin_defaults(defaults_yaml: Path) -> dict[str, dict[str, object]]:
+    if not defaults_yaml.exists():
+        return {}
+    try:
+        data = yaml.safe_load(defaults_yaml.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return {}
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    defaults: dict[str, dict[str, object]] = {}
+    for plugin_name, plugin_defaults in data.items():
+        if not isinstance(plugin_name, str):
+            continue
+        if plugin_defaults is None:
+            defaults[plugin_name] = {}
+        elif isinstance(plugin_defaults, dict):
+            defaults[plugin_name] = dict(plugin_defaults)
+    return defaults
 
 
 def discover_filter_plugins() -> list[FilterPluginExport]:

@@ -642,6 +642,14 @@ class PipelineEditor(Plugin):
             suffix += 1
         return f"{base}_{suffix}"
 
+    def _default_chain_filter_params(self, plugin_name: str) -> dict[str, object]:
+        defaults = getattr(self.discovery, "filter_plugin_defaults", {})
+        if isinstance(defaults, dict):
+            plugin_defaults = defaults.get(plugin_name, {})
+            if isinstance(plugin_defaults, dict):
+                return dict(plugin_defaults)
+        return {}
+
     def _rewrite_chain_parameters(self, node: Node, entries: list[dict[str, object]]) -> None:
         prefix = self._chain_param_prefix(node)
         preserved = {
@@ -1879,19 +1887,16 @@ class PipelineEditor(Plugin):
         def apply_chain_change(new_entries: list[dict[str, object]]) -> None:
             entries[:] = new_entries
             self._rewrite_chain_parameters(node, entries)
-            discovery_error = None
             try:
                 self._refresh_filter_parameters_for_dialog(node)
             except Exception as error:
-                discovery_error = error
+                QMessageBox.critical(self.widget, "Parameter Discovery Failed", str(error))
+                return
             if refresh_parameters is not None:
                 refresh_parameters()
             entries[:] = self._chain_entries(node)
             rebuild_list()
-            if discovery_error is None:
-                self._sync_live_pipeline()
-            elif hasattr(self, "status"):
-                self.status.setText(f"Parameter discovery deferred: {discovery_error}")
+            self._sync_live_pipeline()
 
         def add_filter() -> None:
             if not plugins:
@@ -1906,7 +1911,7 @@ class PipelineEditor(Plugin):
             entries.append({
                 "name": self._unique_chain_filter_name(plugin.name, entries),
                 "type": plugin.name,
-                "params": {},
+                "params": dict(self._default_chain_filter_params(plugin.name)),
             })
             selected_index["value"] = len(entries) - 1
             apply_chain_change(entries)
@@ -2342,17 +2347,7 @@ class PipelineEditor(Plugin):
             }
             if self._is_filter_chain(node):
                 specs[node.id]["reload_on_parameter_change"] = True
-                if not self._filter_chain_is_ready_for_configure(node):
-                    specs[node.id]["configure"] = False
         return specs
-
-    def _filter_chain_is_ready_for_configure(self, node: Node) -> bool:
-        if node.package != "grid_map_components_filter_chain":
-            return True
-        entries = self._chain_entries(node)
-        if not entries:
-            return True
-        return all(bool(entry.get("params")) for entry in entries)
 
     def _live_parameters_for_node(self, node: Node) -> dict[str, object]:
         self._sanitize_filter_parameters(node)

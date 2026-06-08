@@ -72,3 +72,29 @@ def test_grid_map_filters_plugins_are_discoverable_and_chain_compatible() -> Non
         assert plugins[plugin_name].base_class_type == (
             "filters::FilterBase<grid_map::GridMap>"
         )
+
+
+def test_grid_map_filter_chain_plugin_defaults_are_discoverable() -> None:
+    discovery = discover_filters()
+    grid_map_plugins = {
+        item.name
+        for item in discovery.filter_plugins
+        if item.package == "grid_map_filters"
+        and item.base_class_type == "filters::FilterBase<grid_map::GridMap>"
+    }
+
+    defaults = discovery.filter_plugin_defaults
+
+    assert grid_map_plugins
+    assert grid_map_plugins.issubset(defaults)
+    assert defaults["gridMapFilters/ThresholdFilter"] == {
+        "layer": "elevation",
+        "lower_threshold": 0.0,
+        "set_to": 0.0,
+    }
+    assert defaults["gridMapFilters/LightIntensityFilter"]["light_direction"] == [
+        0.0,
+        0.0,
+        1.0,
+    ]
+    assert defaults["gridMapFilters/BufferNormalizerFilter"] == {}
