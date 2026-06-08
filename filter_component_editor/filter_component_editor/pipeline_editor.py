@@ -1549,12 +1549,19 @@ class PipelineEditor(Plugin):
             )
             tabs.addTab(general, "General")
             parameter_refreshers = []
+            def collect_parameter_widgets() -> dict[str, object]:
+                return {
+                    key: self._parameter_widget_value(key, widget, node.parameters[key])
+                    for key, widget in parameter_widgets.items()
+                }
+
             if self._is_filter_chain(node):
                 collect_chain_parameters = self._add_chain_tab(
                     tabs,
                     dialog,
                     node,
                     lambda: parameter_refreshers[0]() if parameter_refreshers else None,
+                    collect_parameter_widgets,
                 )
             parameter_widgets = self._add_parameters_tab(tabs, dialog, node, parameter_refreshers)
             input_qos_widgets = self._add_port_tab(tabs, dialog, node, False)
@@ -1728,42 +1735,12 @@ class PipelineEditor(Plugin):
             clear()
             parameter_widgets.clear()
             if node.parameters:
-                groups: dict[tuple[str, ...], QTreeWidgetItem] = {}
-                for key in sorted(node.parameters):
-                    value = node.parameters[key]
-                    parts = key.split(".")
-                    parent = None
-                    group_path: list[str] = []
-                    for part in parts[:-1]:
-                        group_path.append(part)
-                        path_key = tuple(group_path)
-                        if path_key in groups:
-                            parent = groups[path_key]
-                            continue
-                        group_item = QTreeWidgetItem([part, ""])
-                        group_item.setExpanded(True)
-                        if parent is None:
-                            parameters_tree.addTopLevelItem(group_item)
-                        else:
-                            parent.addChild(group_item)
-                        groups[path_key] = group_item
-                        parent = group_item
-                    leaf = QTreeWidgetItem([parts[-1], ""])
-                    if parent is None:
-                        parameters_tree.addTopLevelItem(leaf)
-                    else:
-                        parent.addChild(leaf)
-                    widget = self._parameter_editor_widget(dialog, value)
-                    description = self._parameter_description(node, key)
-                    if description:
-                        leaf.setToolTip(0, description)
-                        widget.setToolTip(description)
-                        if isinstance(widget, QLineEdit):
-                            widget.setPlaceholderText(description)
-                    parameter_widgets[key] = widget
-                    parameters_tree.setItemWidget(leaf, 1, widget)
-                parameters_tree.expandAll()
-                parameters_tree.resizeColumnToContents(0)
+                parameter_widgets.update(self._populate_parameter_tree(
+                    dialog,
+                    parameters_tree,
+                    node.parameters,
+                    lambda key: self._parameter_description(node, key),
+                ))
             else:
                 parameters_tree.addTopLevelItem(QTreeWidgetItem(["No editable parameters.", ""]))
 
@@ -1773,6 +1750,52 @@ class PipelineEditor(Plugin):
         parameters_scroll.setWidget(parameters)
         tabs.addTab(parameters_scroll, "Params")
         return parameter_widgets
+
+    def _populate_parameter_tree(
+        self,
+        dialog: QDialog,
+        tree: QTreeWidget,
+        parameters: dict[str, object],
+        description_for,
+    ) -> dict[str, QLineEdit | QCheckBox]:
+        widgets: dict[str, QLineEdit | QCheckBox] = {}
+        groups: dict[tuple[str, ...], QTreeWidgetItem] = {}
+        for key in sorted(parameters):
+            value = parameters[key]
+            parts = key.split(".")
+            parent = None
+            group_path: list[str] = []
+            for part in parts[:-1]:
+                group_path.append(part)
+                path_key = tuple(group_path)
+                if path_key in groups:
+                    parent = groups[path_key]
+                    continue
+                group_item = QTreeWidgetItem([part, ""])
+                group_item.setExpanded(True)
+                if parent is None:
+                    tree.addTopLevelItem(group_item)
+                else:
+                    parent.addChild(group_item)
+                groups[path_key] = group_item
+                parent = group_item
+            leaf = QTreeWidgetItem([parts[-1], ""])
+            if parent is None:
+                tree.addTopLevelItem(leaf)
+            else:
+                parent.addChild(leaf)
+            widget = self._parameter_editor_widget(dialog, value)
+            description = description_for(key)
+            if description:
+                leaf.setToolTip(0, description)
+                widget.setToolTip(description)
+                if isinstance(widget, QLineEdit):
+                    widget.setPlaceholderText(description)
+            widgets[key] = widget
+            tree.setItemWidget(leaf, 1, widget)
+        tree.expandAll()
+        tree.resizeColumnToContents(0)
+        return widgets
 
     def _parameter_editor_widget(self, dialog: QDialog, value: object) -> QLineEdit | QCheckBox:
         if isinstance(value, bool):
@@ -1797,7 +1820,14 @@ class PipelineEditor(Plugin):
                 widget.setPlaceholderText(description)
         return label
 
-    def _add_chain_tab(self, tabs: QTabWidget, dialog: QDialog, node: Node, refresh_parameters=None):
+    def _add_chain_tab(
+        self,
+        tabs: QTabWidget,
+        dialog: QDialog,
+        node: Node,
+        refresh_parameters=None,
+        collect_current_parameters=None,
+    ):
         scroll = QScrollArea(dialog)
         scroll.setWidgetResizable(True)
         page = QWidget(scroll)
@@ -1896,16 +1926,77 @@ class PipelineEditor(Plugin):
             selected_index["value"] = target
             apply_chain_change(entries)
 
+        def edit_filter_params(item=None) -> None:
+            if collect_current_parameters is not None:
+                node.parameters = collect_current_parameters()
+            refresh_entries_from_parameters()
+            row = chain_list.row(item) if item is not None else chain_list.currentRow()
+            if row < 0 or row >= len(entries):
+                return
+            if self._edit_chain_filter_params(dialog, node, row):
+                if refresh_parameters is not None:
+                    refresh_parameters()
+                refresh_entries_from_parameters()
+                rebuild_list()
+
         add_button.clicked.connect(add_filter)
         remove_button.clicked.connect(remove_filter)
         up_button.clicked.connect(lambda: move_filter(-1))
         down_button.clicked.connect(lambda: move_filter(1))
         chain_list.itemSelectionChanged.connect(selection_changed)
+        chain_list.itemDoubleClicked.connect(edit_filter_params)
 
         rebuild_list()
         scroll.setWidget(page)
         tabs.addTab(scroll, "Chain")
         return collect
+
+    def _edit_chain_filter_params(self, parent: QDialog, node: Node, index: int) -> bool:
+        entries = self._chain_entries(node)
+        if index < 0 or index >= len(entries):
+            return False
+        entry = entries[index]
+        prefix = self._chain_param_prefix(node)
+        parameter_prefix = f"{prefix}.filter{index + 1}.params."
+        scoped_parameters = {
+            key.removeprefix(parameter_prefix): value
+            for key, value in node.parameters.items()
+            if key.startswith(parameter_prefix)
+        }
+        dialog = QDialog(parent)
+        name = str(entry.get("name", "")).strip() or f"filter{index + 1}"
+        dialog.setWindowTitle(f"{name} Parameters")
+        layout = QVBoxLayout(dialog)
+        tree = QTreeWidget(dialog)
+        tree.setColumnCount(2)
+        tree.setHeaderLabels(["Parameter", "Value"])
+        layout.addWidget(tree)
+        widgets = self._populate_parameter_tree(
+            dialog,
+            tree,
+            scoped_parameters,
+            lambda key: self._parameter_description(node, f"{parameter_prefix}{key}"),
+        ) if scoped_parameters else {}
+        if not scoped_parameters:
+            tree.addTopLevelItem(QTreeWidgetItem(["No editable parameters.", ""]))
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        self._set_dialog_default_size(dialog, width=640, height=420)
+        while dialog.exec_() == QDialog.Accepted:
+            try:
+                for key, widget in widgets.items():
+                    node.parameters[f"{parameter_prefix}{key}"] = self._parameter_widget_value(
+                        key,
+                        widget,
+                        scoped_parameters[key],
+                    )
+            except ValueError as error:
+                QMessageBox.critical(self.widget, "Invalid Value", str(error))
+                continue
+            return True
+        return False
 
     def _choose_chain_plugin(self, plugins: list[FilterPluginExport]) -> FilterPluginExport | None:
         dialog = QDialog(self.widget)
