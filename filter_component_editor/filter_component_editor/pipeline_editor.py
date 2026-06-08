@@ -1205,7 +1205,7 @@ class PipelineEditor(Plugin):
         self.connection_source_port = "out"
         node_item = self._port_owner(clicked_item) or self._node_item_for_graphics_item(clicked_item)
         if node_item is None:
-            self._show_action_error("Connect", "Drop onto a compatible node to create a connection.")
+            self.status.setText("Connection canceled.")
             return True
         if node_item.node.id == source.node.id:
             self._show_action_error("Connect", "Cannot connect a node to itself.")
