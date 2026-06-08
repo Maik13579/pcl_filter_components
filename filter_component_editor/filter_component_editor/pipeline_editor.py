@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+from dataclasses import dataclass
 
 from python_qt_binding.QtCore import QPointF, QRectF, Qt
 from python_qt_binding.QtGui import QColor, QPen
@@ -45,6 +46,14 @@ ROS_MESSAGE_COMPATIBILITY_WARNING = (
     "Logical types differ. ROS message type matches, so this connection is allowed, "
     "but zero-copy will not work."
 )
+
+
+@dataclass(frozen=True)
+class ConnectionVerdict:
+    verdict: str
+    reason: str = ""
+    source_port: str = ""
+    target_port: str = ""
 
 
 class PipelineEditor(Plugin):
@@ -536,6 +545,10 @@ class PipelineEditor(Plugin):
     def _warn_ros_message_compatibility(self) -> None:
         QMessageBox.warning(self.widget, "ROS Message Compatibility", ROS_MESSAGE_COMPATIBILITY_WARNING)
 
+    def _show_action_error(self, title: str, message: str) -> None:
+        self.status.setText(message)
+        QMessageBox.warning(self.widget, title, message)
+
     def _stream_types(self, value: str) -> list[str]:
         return [item.strip() for item in value.replace(";", ",").split(",") if item.strip()]
 
@@ -638,6 +651,111 @@ class PipelineEditor(Plugin):
         occupied = self._occupied_output_ports(node)
         return [(port, stream_type, label) for port, stream_type, label in self._port_options(node, True) if port not in occupied]
 
+    def _connection_verdict(
+        self,
+        source: Node,
+        source_port: str,
+        target: Node,
+        target_port: str,
+    ) -> ConnectionVerdict:
+        if source.id == target.id:
+            return ConnectionVerdict("invalid", "Cannot connect a node to itself.", source_port, target_port)
+        if source.type == "topic" and target.type == "topic":
+            return ConnectionVerdict("invalid", "Connect through one topic node.", source_port, target_port)
+
+        canonical_source_port = (
+            self._canonical_output_port(source, source_port) if source.type == "filter" else source_port
+        )
+        canonical_target_port = (
+            self._canonical_input_port(target, target_port) if target.type == "filter" else target_port
+        )
+        if source.type == "filter" and canonical_source_port in self._occupied_output_ports(source):
+            return ConnectionVerdict(
+                "unavailable",
+                f"{source.id} output {canonical_source_port} is already connected.",
+                canonical_source_port,
+                canonical_target_port,
+            )
+        if target.type == "filter" and canonical_target_port in self._occupied_input_ports(target):
+            return ConnectionVerdict(
+                "unavailable",
+                f"{target.id} input {canonical_target_port} is already connected.",
+                canonical_source_port,
+                canonical_target_port,
+            )
+
+        source_type = self._edge_type(source, True, canonical_source_port)
+        target_type = self._edge_type(target, False, canonical_target_port)
+        compatibility = self._connection_compatibility(source_type, target_type)
+        if compatibility == "invalid":
+            return ConnectionVerdict(
+                "invalid",
+                f"{source.id} produces {source_type or 'an unknown type'}, "
+                f"but {target.id} expects {target_type or 'an unknown type'}.",
+                canonical_source_port,
+                canonical_target_port,
+            )
+        return ConnectionVerdict(compatibility, "", canonical_source_port, canonical_target_port)
+
+    def _candidate_input_verdicts(self, source: Node, source_port: str, target: Node) -> list[ConnectionVerdict]:
+        if target.type != "filter":
+            return [self._connection_verdict(source, source_port, target, "in")]
+        return [
+            self._connection_verdict(source, source_port, target, port)
+            for port, _stream_type, _label in self.available_input_ports(target)
+        ]
+
+    def _candidate_source_ports(self, source: Node, source_port: str) -> list[str]:
+        if source.type != "filter" or source_port != "out":
+            return [source_port]
+        ports = [port for port, _stream_type, _label in self.available_output_ports(source)]
+        return ports or [source_port]
+
+    def _best_connection_verdict_for_target(
+        self,
+        source: Node,
+        source_port: str,
+        target: Node,
+    ) -> ConnectionVerdict:
+        if source.id == target.id:
+            return self._connection_verdict(source, source_port, target, "in")
+        candidates: list[ConnectionVerdict] = []
+        for candidate_source_port in self._candidate_source_ports(source, source_port):
+            if target.type == "filter":
+                candidates.extend(self._candidate_input_verdicts(source, candidate_source_port, target))
+            else:
+                candidates.append(self._connection_verdict(source, candidate_source_port, target, "in"))
+        if not candidates:
+            return ConnectionVerdict("unavailable", f"{target.id} has no free inputs.", source_port, "in")
+        for wanted in ("exact", ROS_MESSAGE_COMPATIBILITY, "invalid", "unavailable"):
+            for verdict in candidates:
+                if verdict.verdict == wanted:
+                    return verdict
+        return candidates[0]
+
+    def _highlight_nodes_for_connection_drag(self) -> None:
+        if self.connection_source is None:
+            self._clear_connection_highlights()
+            return
+        source = self.connection_source.node
+        source_port = self.connection_source_port
+        for item in self.items_by_id.values():
+            if item.node.id == source.id:
+                item.set_connection_highlight("unavailable")
+                continue
+            verdict = self._best_connection_verdict_for_target(source, source_port, item.node)
+            state = {
+                "exact": "compatible",
+                ROS_MESSAGE_COMPATIBILITY: "ros_message_compatible",
+                "invalid": "incompatible",
+                "unavailable": "unavailable",
+            }.get(verdict.verdict, "")
+            item.set_connection_highlight(state)
+
+    def _clear_connection_highlights(self) -> None:
+        for item in self.items_by_id.values():
+            item.set_connection_highlight("")
+
     def _resolve_source_port(
         self,
         source: NodeItem,
@@ -650,8 +768,7 @@ class PipelineEditor(Plugin):
         options = self.available_output_ports(source.node)
         if len(options) <= 1:
             if not options:
-                QMessageBox.warning(
-                    self.widget,
+                self._show_action_error(
                     "Output Already Connected",
                     f"All outputs on {source.node.id} are already connected.",
                 )
@@ -667,9 +784,8 @@ class PipelineEditor(Plugin):
             if len(matches) == 1:
                 return matches[0]
             if not matches:
-                QMessageBox.warning(
-                    self.widget,
-                    "Output Already Connected",
+                self._show_action_error(
+                    "No Compatible Output",
                     f"No compatible free output on {source.node.id}.",
                 )
                 return None
@@ -688,10 +804,9 @@ class PipelineEditor(Plugin):
         options = self.available_output_ports(source.node)
         if len(options) <= 1:
             if not options:
-                QMessageBox.warning(
-                    self.widget,
-                    "Output Already Connected",
-                    f"All outputs on {source.node.id} are already connected.",
+                self._show_action_error(
+                    "Topic Creation Failed",
+                    f"No free output on {source.node.id} is available for a new topic.",
                 )
                 return None
             return options[0][0] if len(self._port_options(source.node, True)) > 1 else source_port
@@ -710,10 +825,9 @@ class PipelineEditor(Plugin):
         options = self.available_input_ports(target.node)
         if len(options) <= 1:
             if not options:
-                QMessageBox.warning(
-                    self.widget,
-                    "Input Already Connected",
-                    f"All inputs on {target.node.id} are already connected.",
+                self._show_action_error(
+                    "Topic Creation Failed",
+                    f"No free input on {target.node.id} is available for a new topic.",
                 )
                 return None
             return options[0][0] if len(self._port_options(target.node, False)) > 1 else target_port
@@ -734,7 +848,10 @@ class PipelineEditor(Plugin):
         if len(options) <= 1:
             canonical = self._canonical_input_port(target.node, target_port)
             if canonical in occupied:
-                QMessageBox.warning(self.widget, "Input Already Connected", f"{target.node.id} input is already connected.")
+                self._show_action_error(
+                    "Input Already Connected",
+                    f"{target.node.id} input {canonical} is already connected.",
+                )
                 return None
             return target_port
         source_type = self._edge_type(source.node, True, source_port)
@@ -746,10 +863,9 @@ class PipelineEditor(Plugin):
         if len(matches) == 1:
             return matches[0][0]
         if not matches:
-            QMessageBox.warning(
-                self.widget,
-                "Input Already Connected",
-                f"All compatible inputs on {target.node.id} are already connected.",
+            self._show_action_error(
+                "No Compatible Input",
+                f"No compatible free input on {target.node.id}.",
             )
             return None
         label, ok = QInputDialog.getItem(self.widget, "Select Input", "Input", [label for _port, label in matches], 0, False)
@@ -771,7 +887,7 @@ class PipelineEditor(Plugin):
     def connect_selected(self) -> None:
         selected = self._selected_node_items()
         if len(selected) != 2:
-            QMessageBox.warning(self.widget, "Connect", "Select exactly two nodes.")
+            self._show_action_error("Connect", "Select exactly two nodes.")
             return
         source, target = self._ordered_connection(selected)
         self._connect_nodes(source, target)
@@ -783,6 +899,12 @@ class PipelineEditor(Plugin):
         source_port: str = "out",
         target_port: str = "in",
     ) -> None:
+        if source.node.id == target.node.id:
+            self._show_action_error("Connect", "Cannot connect a node to itself.")
+            return
+        if source.node.type == "topic" and target.node.type == "topic":
+            self._show_action_error("Connect", "Connect through one topic node.")
+            return
         resolved_source_port = self._resolve_source_port(source, target, source_port, target_port)
         if resolved_source_port is None:
             self.status.setText("Connection canceled.")
@@ -793,16 +915,10 @@ class PipelineEditor(Plugin):
             self.status.setText("Connection canceled.")
             return
         target_port = resolved_target_port
-        if source.node.id == target.node.id:
-            QMessageBox.warning(self.widget, "Connect", "Cannot connect a node to itself.")
-            return
         if source.node.type != "topic" and target.node.type != "topic":
             topic = self._create_topic_between(source, target, source_port, target_port)
             self._connect_nodes(source, topic, source_port, "in")
             self._connect_nodes(topic, target, "out", target_port)
-            return
-        if source.node.type == "topic" and target.node.type == "topic":
-            QMessageBox.warning(self.widget, "Connect", "Connect through one topic node.")
             return
         source_type = self._edge_type(source.node, True, source_port)
         target_type = self._edge_type(target.node, False, target_port)
@@ -816,8 +932,7 @@ class PipelineEditor(Plugin):
         target_type = self._edge_type(target.node, False, target_port)
         compatibility = self._connection_compatibility(source_type, target_type)
         if compatibility == "invalid":
-            QMessageBox.warning(
-                self.widget,
+            self._show_action_error(
                 "Type Mismatch",
                 f"{source.node.id} produces {source_type}, but {target.node.id} expects {target_type}.",
             )
@@ -831,6 +946,7 @@ class PipelineEditor(Plugin):
                 and edge.target.node == target.node.id
                 and edge.target.port == target_port
             ):
+                self._show_action_error("Duplicate Connection", "That connection already exists.")
                 return
         edge = Edge(
             PortRef(source.node.id, source_port, "output"),
@@ -880,12 +996,13 @@ class PipelineEditor(Plugin):
         topic_type = self._edge_type(item.node, outgoing, port)
         direction = "out" if outgoing else "in"
         topic_name = self._unique_topic(f"/{self._topic_name_part(item.node)}_{direction}")
-        x = float(item.pos().x())
-        y = float(item.pos().y())
+        anchor = item.output_anchor(port) if outgoing else item.input_anchor(port)
+        x = float(anchor.x()) - 28.0
+        y = float(anchor.y()) - 34.0
         if self.top_down_mode:
-            y += 120.0 if outgoing else -120.0
+            y += 112.0 if outgoing else -112.0
         else:
-            x += 280.0 if outgoing else -280.0
+            x += 168.0 if outgoing else -312.0
         self._add_node(
             Node(
                 id=topic_name,
@@ -981,6 +1098,10 @@ class PipelineEditor(Plugin):
         if node_item is None:
             return False
         if node_item.node.type == "filter" and not self.available_output_ports(node_item.node):
+            self._show_action_error(
+                "Output Already Connected",
+                f"All outputs on {node_item.node.id} are already connected.",
+            )
             return False
         self.connection_source = node_item
         self.connection_source_port = node_item.output_port_name(clicked_item)
@@ -994,6 +1115,7 @@ class PipelineEditor(Plugin):
             return False
         source = self.connection_source.output_anchor(self.connection_source_port)
         self.connection_preview.setLine(source.x(), source.y(), scene_pos.x(), scene_pos.y())
+        self._highlight_nodes_for_connection_drag()
         return True
 
     def begin_edge_rewire(self, edge_item: EdgeItem, scene_pos: QPointF) -> None:
@@ -1002,9 +1124,10 @@ class PipelineEditor(Plugin):
         if source is None or target is None:
             return
         if source.node.type != "topic" and target.node.type != "topic":
-            self.status.setText("Only arrows connected to a topic can be rewired.")
+            self._show_action_error("Rewire", "Only arrows connected to a topic can be rewired.")
             return
         self.rewire_edge = edge_item
+        self._clear_connection_highlights()
         anchor = target.input_anchor(edge_item.edge.target.port) if source.node.type == "topic" else source.output_anchor(
             edge_item.edge.source.port
         )
@@ -1037,9 +1160,10 @@ class PipelineEditor(Plugin):
         edge_item = self.rewire_edge
         self.rewire_edge = None
         self._clear_rewire_preview()
+        self._clear_connection_highlights()
         topic_item = self._node_item_for_graphics_item(clicked_item)
         if topic_item is None or topic_item.node.type != "topic":
-            self.status.setText("Rewire canceled.")
+            self._show_action_error("Rewire", "Drop onto a compatible topic to rewire this edge.")
             return True
         source = self.items_by_id.get(edge_item.edge.source.node)
         target = self.items_by_id.get(edge_item.edge.target.node)
@@ -1050,7 +1174,7 @@ class PipelineEditor(Plugin):
             actual = self._edge_type(topic_item.node, True)
             compatibility = self._connection_compatibility(actual, expected)
             if compatibility == "invalid":
-                QMessageBox.warning(self.widget, "Type Mismatch", f"{topic_item.node.id} is {actual}, expected {expected}.")
+                self._show_action_error("Type Mismatch", f"{topic_item.node.id} is {actual}, expected {expected}.")
                 return True
             edge_item.edge.source.node = topic_item.node.id
         else:
@@ -1058,7 +1182,7 @@ class PipelineEditor(Plugin):
             actual = self._edge_type(topic_item.node, False)
             compatibility = self._connection_compatibility(expected, actual)
             if compatibility == "invalid":
-                QMessageBox.warning(self.widget, "Type Mismatch", f"{topic_item.node.id} is {actual}, expected {expected}.")
+                self._show_action_error("Type Mismatch", f"{topic_item.node.id} is {actual}, expected {expected}.")
                 return True
             edge_item.edge.target.node = topic_item.node.id
         edge_item.edge.compatibility = ROS_MESSAGE_COMPATIBILITY if compatibility == ROS_MESSAGE_COMPATIBILITY else ""
@@ -1076,17 +1200,19 @@ class PipelineEditor(Plugin):
         source = self.connection_source
         source_port = self.connection_source_port
         self._clear_connection_preview()
+        self._clear_connection_highlights()
         self.connection_source = None
         self.connection_source_port = "out"
         node_item = self._port_owner(clicked_item) or self._node_item_for_graphics_item(clicked_item)
         if node_item is None:
-            self.status.setText("Connection canceled.")
+            self._show_action_error("Connect", "Drop onto a compatible node to create a connection.")
             return True
         if node_item.node.id == source.node.id:
-            self.status.setText("Connection canceled.")
+            self._show_action_error("Connect", "Cannot connect a node to itself.")
             return True
-        if node_item.node.type == "filter" and clicked_item != node_item.input_port and not self.available_input_ports(node_item.node):
-            self.status.setText("Connection canceled.")
+        verdict = self._best_connection_verdict_for_target(source.node, source_port, node_item.node)
+        if verdict.verdict not in {"exact", ROS_MESSAGE_COMPATIBILITY}:
+            self._show_action_error("Connect", verdict.reason or "No compatible free input is available.")
             return True
         self._connect_nodes(source, node_item, source_port, "in")
         return True
@@ -1105,11 +1231,13 @@ class PipelineEditor(Plugin):
         if self.connection_preview is not None:
             self.scene.removeItem(self.connection_preview)
             self.connection_preview = None
+        self._clear_connection_highlights()
 
     def _clear_rewire_preview(self) -> None:
         if self.rewire_preview is not None:
             self.scene.removeItem(self.rewire_preview)
             self.rewire_preview = None
+        self._clear_connection_highlights()
 
     def _add_edge_item(self, edge: Edge, source: NodeItem, target: NodeItem) -> None:
         item = EdgeItem(edge, source, target)

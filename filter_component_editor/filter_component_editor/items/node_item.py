@@ -40,6 +40,7 @@ class NodeItem(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.ItemIsSelectable)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
         self.border_color = self.editor.theme_color("mid")
+        self.connection_highlight = ""
         self.setBrush(self.editor.node_fill(node.type))
         self.setPen(QPen(self.border_color, 1.5))
         if node.type == "topic":
@@ -81,7 +82,11 @@ class NodeItem(QGraphicsRectItem):
         self.update_port_visibility()
 
     def paint(self, painter, option, widget=None) -> None:
-        if self.isSelected():
+        if self.connection_highlight:
+            pen_color, pen_width, fill = self._connection_highlight_style()
+            self.setPen(QPen(pen_color, pen_width))
+            self.setBrush(fill)
+        elif self.isSelected():
             self.setPen(QPen(self.editor.accent_color("selected"), 3.0))
             self.setBrush(self.editor.selected_node_fill(self.node.type))
         else:
@@ -105,6 +110,29 @@ class NodeItem(QGraphicsRectItem):
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
         painter.drawRoundedRect(rect, 6.0, 6.0)
+
+    def set_connection_highlight(self, state: str) -> None:
+        if state == self.connection_highlight:
+            return
+        self.connection_highlight = state
+        self.update()
+
+    def _connection_highlight_style(self) -> tuple[QColor, float, QColor]:
+        fill = self.editor.node_fill(self.node.type)
+        if self.connection_highlight == "compatible":
+            return QColor("#2e7d32"), 3.0, fill
+        if self.connection_highlight == "ros_message_compatible":
+            return QColor("#f57c00"), 3.0, fill
+        if self.connection_highlight == "incompatible":
+            return QColor("#c62828"), 3.0, fill
+        if self.connection_highlight == "unavailable":
+            dim = QColor(
+                (fill.red() + self.editor.theme_color("base").red()) // 2,
+                (fill.green() + self.editor.theme_color("base").green()) // 2,
+                (fill.blue() + self.editor.theme_color("base").blue()) // 2,
+            )
+            return self.editor.theme_color("mid"), 1.5, dim
+        return self.border_color, 1.5, fill
 
     def itemChange(self, change, value):
         result = super().itemChange(change, value)
