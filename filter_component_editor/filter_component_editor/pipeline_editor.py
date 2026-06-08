@@ -704,6 +704,28 @@ class PipelineEditor(Plugin):
                 return port
         return None
 
+    def _resolve_target_port_for_new_topic(self, target: NodeItem, target_port: str) -> str | None:
+        if target.node.type != "filter" or target_port != "in":
+            return target_port
+        options = self.available_input_ports(target.node)
+        if len(options) <= 1:
+            if not options:
+                QMessageBox.warning(
+                    self.widget,
+                    "Input Already Connected",
+                    f"All inputs on {target.node.id} are already connected.",
+                )
+                return None
+            return options[0][0] if len(self._port_options(target.node, False)) > 1 else target_port
+        labels = [label for _port, _stream_type, label in options]
+        label, ok = QInputDialog.getItem(self.widget, "Select Input", "Input", labels, 0, False)
+        if not ok:
+            return None
+        for port, _stream_type, option_label in options:
+            if option_label == label:
+                return port
+        return None
+
     def _resolve_target_port(self, source: NodeItem, target: NodeItem, source_port: str, target_port: str) -> str | None:
         if target.node.type != "filter" or target_port != "in":
             return target_port
@@ -890,6 +912,14 @@ class PipelineEditor(Plugin):
                 return True
             topic = self._create_topic_for_port(node_item, True, source_port)
             self._connect_nodes(node_item, topic, source_port, "in")
+            return True
+        if clicked_item == node_item.input_port:
+            target_port = self._resolve_target_port_for_new_topic(node_item, "in")
+            if target_port is None:
+                self.status.setText("Topic creation canceled.")
+                return True
+            topic = self._create_topic_for_port(node_item, False, target_port)
+            self._connect_nodes(topic, node_item, "out", target_port)
             return True
         return False
 
