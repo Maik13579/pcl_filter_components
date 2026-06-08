@@ -1,7 +1,7 @@
 # Copyright 2026 Maik Knof
 # SPDX-License-Identifier: Apache-2.0
 
-from python_qt_binding.QtCore import QPointF
+from python_qt_binding.QtCore import QPointF, Qt
 from python_qt_binding.QtGui import QColor, QBrush, QFontMetrics, QPainter, QPen, QPolygonF
 from python_qt_binding.QtWidgets import (
     QGraphicsEllipseItem,
@@ -72,6 +72,7 @@ class NodeItem(QGraphicsRectItem):
             self.input_port.setBrush(port_brush)
             self.output_port.setBrush(port_brush)
         else:
+            self.input_port.setAcceptedMouseButtons(Qt.NoButton)
             port_brush = QBrush(self._filter_port_color())
             self.input_port.setBrush(port_brush)
             self.output_port.setBrush(port_brush)
@@ -127,11 +128,11 @@ class NodeItem(QGraphicsRectItem):
                 center_x = 28
                 return QPointF(center_x - radius, 0), QPointF(center_x - radius, 56)
             center_x = width / 2.0
-            return QPointF(center_x - radius, -radius), QPointF(center_x - radius, height - radius)
+            return QPointF(center_x - radius, height), QPointF(center_x - radius, -radius * 2.0)
         if self.node.type == "topic":
             return QPointF(0, 28), QPointF(40, 28)
         center_y = height / 2.0
-        return QPointF(-radius, center_y - radius), QPointF(width - radius, center_y - radius)
+        return QPointF(-radius * 2.0, center_y - radius), QPointF(width, center_y - radius)
 
     def output_port_name(self, item) -> str:
         return "out"

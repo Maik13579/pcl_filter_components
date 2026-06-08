@@ -889,14 +889,6 @@ class PipelineEditor(Plugin):
             topic = self._create_topic_for_port(node_item, True, source_port)
             self._connect_nodes(node_item, topic, source_port, "in")
             return True
-        if clicked_item == node_item.input_port:
-            topic = self._create_topic_for_port(node_item, False, "in")
-            target_port = self._resolve_target_port(topic, node_item, "out", "in")
-            if target_port is None:
-                self.status.setText("Topic creation canceled.")
-                return True
-            self._connect_nodes(topic, node_item, "out", target_port)
-            return True
         return False
 
     def _port_owner(self, item) -> NodeItem | None:
@@ -951,6 +943,8 @@ class PipelineEditor(Plugin):
         if clicked_item is None:
             return False
         port_owner = self._port_owner(clicked_item)
+        if port_owner is not None and port_owner.node.type == "filter" and clicked_item == port_owner.input_port:
+            return False
         node_item = port_owner or (self._node_item_for_graphics_item(clicked_item) if allow_node_body else None)
         if node_item is None:
             return False
