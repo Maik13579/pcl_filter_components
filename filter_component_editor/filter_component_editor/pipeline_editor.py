@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
-import math
 
 from python_qt_binding.QtCore import QPointF, QRectF, Qt
-from python_qt_binding.QtGui import QColor, QBrush, QFontMetrics, QPainter, QPen, QPolygonF
+from python_qt_binding.QtGui import QColor, QPen
 from python_qt_binding.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -14,14 +13,9 @@ from python_qt_binding.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
-    QGraphicsEllipseItem,
     QGraphicsItem,
     QGraphicsLineItem,
-    QGraphicsPolygonItem,
-    QGraphicsRectItem,
     QGraphicsScene,
-    QGraphicsSimpleTextItem,
-    QGraphicsView,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -29,7 +23,7 @@ from python_qt_binding.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPushButton,
-    QMenu,
+    QScrollArea,
     QTextEdit,
     QSplitter,
     QTabWidget,
@@ -39,9 +33,11 @@ from python_qt_binding.QtWidgets import (
 from qt_gui.plugin import Plugin
 
 from filter_component_editor.filter_discovery import FilterExport, discover_filters
+from filter_component_editor.items import EdgeHandleItem, EdgeItem, NodeItem
 from filter_component_editor.parameter_discovery import ComponentParameterDiscovery
 from filter_component_editor.pipeline_graph import Edge, Graph, Node, PortRef, load_graph, save_graph
 from filter_component_editor.runtime import LivePipelineRuntime
+from filter_component_editor.views import PipelineView
 
 
 ROS_MESSAGE_COMPATIBILITY = "ros_message"
@@ -49,352 +45,6 @@ ROS_MESSAGE_COMPATIBILITY_WARNING = (
     "Logical types differ. ROS message type matches, so this connection is allowed, "
     "but zero-copy will not work."
 )
-
-
-class EdgeHandleItem(QGraphicsPolygonItem):
-    def __init__(self, edge_item: "EdgeItem") -> None:
-        size = 9.0
-        super().__init__(QPolygonF([
-            QPointF(0.0, -size),
-            QPointF(size, 0.0),
-            QPointF(0.0, size),
-            QPointF(-size, 0.0),
-        ]))
-        self.edge_item = edge_item
-        self.setFlag(QGraphicsItem.ItemIsMovable)
-        self.setFlag(QGraphicsItem.ItemIsSelectable)
-        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
-        color = edge_item.source.editor.edge_color(edge_item.edge, selected=True)
-        self.setBrush(QBrush(color))
-        self.setPen(QPen(color, 1))
-        self.setZValue(2)
-
-    def itemChange(self, change, value):
-        result = super().itemChange(change, value)
-        if change == QGraphicsItem.ItemPositionHasChanged:
-            self.edge_item.edge.position = {"x": float(self.pos().x()), "y": float(self.pos().y())}
-            self.edge_item.refresh_label()
-        return result
-
-
-class EdgeItem(QGraphicsLineItem):
-    def __init__(self, edge: Edge, source: "NodeItem", target: "NodeItem") -> None:
-        super().__init__()
-        self.edge = edge
-        self.source = source
-        self.target = target
-        self.setFlag(QGraphicsItem.ItemIsSelectable)
-        self.setZValue(-1)
-        self.setPen(QPen(source.editor.edge_color(edge), 2))
-        self.arrow = QGraphicsPolygonItem(self)
-        self.arrow.setBrush(QBrush(source.editor.edge_color(edge)))
-        self.arrow.setPen(QPen(source.editor.edge_color(edge), 1))
-        self.refresh()
-
-    def paint(self, painter, option, widget=None) -> None:
-        width = 4 if self.isSelected() else 2
-        color = self.source.editor.edge_color(self.edge, selected=self.isSelected())
-        self.setPen(QPen(color, width))
-        self.arrow.setBrush(QBrush(color))
-        self.arrow.setPen(QPen(color, 1))
-        super().paint(painter, option, widget)
-
-    def refresh(self) -> None:
-        source = self.source.output_anchor(self.edge.source.port)
-        target = self.target.input_anchor(self.edge.target.port)
-        self.setLine(source.x(), source.y(), target.x(), target.y())
-        self._refresh_arrow(self.arrow, source, target)
-
-    def refresh_label(self) -> None:
-        pass
-
-    def _label_text(self) -> str:
-        return self.edge.topic or f"~/{self.edge.source.node}-{self.edge.target.node}"
-
-    def _edge_type_text(self) -> str:
-        source_type = self.source.editor._edge_type(self.source.node, True, self.edge.source.port)
-        target_type = self.source.editor._edge_type(self.target.node, False, self.edge.target.port)
-        return source_type or target_type or "unknown"
-
-    def _refresh_arrow(self, arrow: QGraphicsPolygonItem, source: QPointF, target: QPointF) -> None:
-        angle = math.atan2(target.y() - source.y(), target.x() - source.x())
-        size = 17.0
-        back = QPointF(target.x() - math.cos(angle) * size, target.y() - math.sin(angle) * size)
-        left = QPointF(
-            back.x() + math.cos(angle + math.pi / 2.0) * size * 0.55,
-            back.y() + math.sin(angle + math.pi / 2.0) * size * 0.55,
-        )
-        right = QPointF(
-            back.x() + math.cos(angle - math.pi / 2.0) * size * 0.55,
-            back.y() + math.sin(angle - math.pi / 2.0) * size * 0.55,
-        )
-        arrow.setPolygon(QPolygonF([target, left, right]))
-
-
-class PortItem(QGraphicsEllipseItem):
-    def __init__(self, label: str, diameter: float, label_color: QColor, parent) -> None:
-        super().__init__(0, 0, diameter, diameter, parent)
-        self.label = label
-        self.label_color = label_color
-
-    def paint(self, painter, option, widget=None) -> None:
-        super().paint(painter, option, widget)
-        font = painter.font()
-        font.setBold(True)
-        font.setPointSize(max(7, font.pointSize() - 1))
-        painter.setFont(font)
-        painter.setPen(self.label_color)
-        painter.drawText(self.rect(), Qt.AlignCenter, self.label)
-
-
-class NodeItem(QGraphicsRectItem):
-    def __init__(self, node: Node, editor: "PipelineEditor") -> None:
-        title_text = node.topic if node.type == "topic" else node.name or node.id
-        subtitle_text = self._topic_subtitle_text(node)
-        title_font = editor.widget.font()
-        title_font.setBold(True)
-        if node.type == "topic":
-            width = 280
-            height = 68
-        else:
-            row_texts = self._filter_row_texts_for_node(node)
-            metrics = QFontMetrics(editor.widget.font())
-            title_metrics = QFontMetrics(title_font)
-            row_widths = [
-                title_metrics.horizontalAdvance(row_texts[0]),
-                *(metrics.horizontalAdvance(text) for text in row_texts[1:]),
-            ]
-            width = max(210, max(row_widths) + 24)
-            height = 78
-        super().__init__(0, 0, width, height)
-        self.node = node
-        self.editor = editor
-        self.setFlag(QGraphicsItem.ItemIsMovable)
-        self.setFlag(QGraphicsItem.ItemIsSelectable)
-        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
-        self.border_color = self.editor.theme_color("mid")
-        self.setBrush(self.editor.node_fill(node.type))
-        self.setPen(QPen(self.border_color, 1.5))
-        if node.type == "topic":
-            title = QGraphicsSimpleTextItem(title_text, self)
-            title.setPos(54, 14)
-            title.setBrush(self.editor.theme_color("text"))
-            subtitle = QGraphicsSimpleTextItem(subtitle_text, self)
-            subtitle.setPos(54, 38)
-            subtitle.setBrush(self.editor.theme_color("text"))
-        else:
-            for index, text in enumerate(row_texts):
-                row = QGraphicsSimpleTextItem(text, self)
-                if index == 0:
-                    row.setFont(title_font)
-                row.setPos(12, 8 + index * 21)
-                row.setBrush(self.editor.theme_color("text"))
-        input_pos, output_pos = self._port_positions()
-        port_diameter = self._port_diameter()
-        if node.type == "topic":
-            self.input_port = QGraphicsEllipseItem(0, 0, port_diameter, port_diameter, self)
-            self.output_port = QGraphicsEllipseItem(0, 0, port_diameter, port_diameter, self)
-        else:
-            label_color = self.editor.theme_color("text")
-            self.input_port = PortItem("I", port_diameter, label_color, self)
-            self.output_port = PortItem("O", port_diameter, label_color, self)
-        self.input_port.setPos(input_pos)
-        self.output_port.setPos(output_pos)
-        if node.type == "topic":
-            port_brush = QBrush(self.editor.theme_color("text"))
-            self.input_port.setBrush(port_brush)
-            self.output_port.setBrush(port_brush)
-        else:
-            port_brush = QBrush(self._filter_port_color())
-            self.input_port.setBrush(port_brush)
-            self.output_port.setBrush(port_brush)
-            self.input_port.setPen(QPen(self.editor.theme_color("text"), 1.5))
-            self.output_port.setPen(QPen(self.editor.theme_color("text"), 1.5))
-        self.update_port_visibility()
-
-    def paint(self, painter, option, widget=None) -> None:
-        if self.isSelected():
-            self.setPen(QPen(self.editor.accent_color("selected"), 3.0))
-            self.setBrush(self.editor.selected_node_fill(self.node.type))
-        else:
-            self.setPen(QPen(self.border_color, 1.5))
-            self.setBrush(self.editor.node_fill(self.node.type))
-        if self.node.type == "topic":
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setPen(self.pen())
-            painter.setBrush(self.brush())
-            painter.drawPolygon(
-                QPolygonF([
-                    QPointF(28.0, 8.0),
-                    QPointF(52.0, 34.0),
-                    QPointF(28.0, 60.0),
-                    QPointF(4.0, 34.0),
-                ])
-            )
-            return
-        painter.setRenderHint(QPainter.Antialiasing)
-        rect = self.rect()
-        painter.setPen(self.pen())
-        painter.setBrush(self.brush())
-        painter.drawRoundedRect(rect, 6.0, 6.0)
-
-    def itemChange(self, change, value):
-        result = super().itemChange(change, value)
-        if change == QGraphicsItem.ItemPositionHasChanged:
-            self.editor.expand_scene_for_item(self)
-            self.editor.refresh_edges()
-        return result
-
-    def input_anchor(self, port: str = "in") -> QPointF:
-        return self.input_port.sceneBoundingRect().center()
-
-    def output_anchor(self, port: str = "out") -> QPointF:
-        return self.output_port.sceneBoundingRect().center()
-
-    def _port_positions(self) -> tuple[QPointF, QPointF]:
-        width = self.rect().width()
-        height = self.rect().height()
-        radius = self._port_diameter() / 2.0
-        if self.editor.top_down_mode:
-            if self.node.type == "topic":
-                center_x = 28
-                return QPointF(center_x - radius, 0), QPointF(center_x - radius, 56)
-            center_x = width / 2.0
-            return QPointF(center_x - radius, -radius), QPointF(center_x - radius, height - radius)
-        if self.node.type == "topic":
-            return QPointF(0, 28), QPointF(40, 28)
-        center_y = height / 2.0
-        return QPointF(-radius, center_y - radius), QPointF(width - radius, center_y - radius)
-
-    def output_port_name(self, item) -> str:
-        return "out"
-
-    def update_port_visibility(self) -> None:
-        if self.node.type != "filter":
-            self.input_port.setVisible(True)
-            self.output_port.setVisible(True)
-            return
-        self.input_port.setVisible(bool(self.editor.available_input_ports(self.node)))
-        self.output_port.setVisible(bool(self.editor.available_output_ports(self.node)))
-
-    def _topic_subtitle_text(self, node: Node) -> str:
-        return node.output_type or node.input_type or "topic"
-
-    def _filter_row_texts_for_node(self, node: Node) -> list[str]:
-        return [
-            node.name or node.id or "unknown",
-            f"Type: {node.filter or 'filter'}",
-            f"Package: {node.package or 'unknown'}",
-        ]
-
-    def _port_diameter(self) -> float:
-        return 12.0 if self.node.type == "topic" else 18.0
-
-    def _filter_port_color(self) -> QColor:
-        return self.editor.theme_color("base")
-
-
-class PipelineView(QGraphicsView):
-    def __init__(self, scene: QGraphicsScene, editor: "PipelineEditor") -> None:
-        super().__init__(scene)
-        self.editor = editor
-        self.setRenderHint(QPainter.Antialiasing)
-        self.setDragMode(QGraphicsView.RubberBandDrag)
-        self._panning = False
-        self._last_pan_pos = None
-
-    def mouseDoubleClickEvent(self, event) -> None:
-        item = self.itemAt(event.pos())
-        if self.editor.create_topic_from_port(item):
-            return
-        while item is not None and not isinstance(item, (NodeItem, EdgeItem, EdgeHandleItem)):
-            item = item.parentItem()
-        if isinstance(item, NodeItem):
-            item.setSelected(True)
-            self.editor.edit_node(item)
-            return
-        if isinstance(item, EdgeHandleItem):
-            item.setSelected(True)
-            self.editor.begin_edge_rewire(item.edge_item, self.mapToScene(event.pos()))
-            return
-        if isinstance(item, EdgeItem):
-            item.setSelected(True)
-            self.editor.begin_edge_rewire(item, self.mapToScene(event.pos()))
-            return
-        super().mouseDoubleClickEvent(event)
-
-    def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MiddleButton:
-            self._panning = True
-            self._last_pan_pos = event.pos()
-            self.setCursor(Qt.ClosedHandCursor)
-            event.accept()
-            return
-        if event.button() == Qt.LeftButton and self.editor.begin_connection_drag(
-            self.itemAt(event.pos()),
-            self.mapToScene(event.pos()),
-            bool(event.modifiers() & Qt.ShiftModifier),
-        ):
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:
-        if self._panning and self._last_pan_pos is not None:
-            delta = event.pos() - self._last_pan_pos
-            self._last_pan_pos = event.pos()
-            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
-            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
-            event.accept()
-            return
-        if self.editor.update_connection_drag(self.mapToScene(event.pos())):
-            return
-        if self.editor.update_edge_rewire(self.mapToScene(event.pos())):
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:
-        if event.button() == Qt.MiddleButton and self._panning:
-            self._panning = False
-            self._last_pan_pos = None
-            self.unsetCursor()
-            event.accept()
-            return
-        if event.button() == Qt.LeftButton and self.editor.finish_connection_drag(
-            self.itemAt(event.pos()),
-            self.mapToScene(event.pos()),
-        ):
-            return
-        if event.button() == Qt.LeftButton and self.editor.finish_edge_rewire(self.itemAt(event.pos())):
-            return
-        super().mouseReleaseEvent(event)
-
-    def wheelEvent(self, event) -> None:
-        if event.angleDelta().y() > 0:
-            self.editor.zoom_canvas(1.15)
-        else:
-            self.editor.zoom_canvas(1.0 / 1.15)
-
-    def keyPressEvent(self, event) -> None:
-        if event.key() == Qt.Key_Delete:
-            self.editor.delete_selected()
-            return
-        if event.key() == Qt.Key_C:
-            self.editor.connect_selected()
-            return
-        super().keyPressEvent(event)
-
-    def contextMenuEvent(self, event) -> None:
-        menu = QMenu(self)
-        edit_action = menu.addAction("Edit")
-        connect_action = menu.addAction("Connect selected")
-        delete_action = menu.addAction("Delete")
-        action = menu.exec_(event.globalPos())
-        if action == edit_action:
-            self.editor.edit_selected()
-        elif action == connect_action:
-            self.editor.connect_selected()
-        elif action == delete_action:
-            self.editor.delete_selected()
 
 
 class PipelineEditor(Plugin):
@@ -411,9 +61,15 @@ class PipelineEditor(Plugin):
         self.selected_logical_types = self._all_discovered_logical_types()
         self.selected_packages = self._all_discovered_packages()
         self.message_type_by_logical: dict[str, str] = {}
+        self.type_adapter_by_logical: dict[str, str] = {}
+        self.type_package_by_logical: dict[str, str] = {}
         for item in self.discovery.types:
             if item.point_type and item.message_type and item.point_type not in self.message_type_by_logical:
                 self.message_type_by_logical[item.point_type] = item.message_type
+            if item.point_type and item.type_adapter and item.point_type not in self.type_adapter_by_logical:
+                self.type_adapter_by_logical[item.point_type] = item.type_adapter
+            if item.point_type and item.package and item.point_type not in self.type_package_by_logical:
+                self.type_package_by_logical[item.point_type] = item.package
         self.items_by_id: dict[str, NodeItem] = {}
         self.edge_items: list[EdgeItem] = []
         self.connection_source: NodeItem | None = None
@@ -1590,14 +1246,23 @@ class PipelineEditor(Plugin):
                 tabs.addTab(sync, "Sync")
             layout.addWidget(tabs)
         else:
-            form = QFormLayout(dialog)
+            tabs = QTabWidget(dialog)
+            general = QWidget(dialog)
+            form = QFormLayout(general)
             topic_edit = QLineEdit(node.topic, dialog)
             form.addRow("Topic", topic_edit)
-            topic_type = node.output_type or node.input_type
-            form.addRow("Topic type", self._readonly_field(topic_type or "unknown"))
-            if node.type == "topic":
-                pass
-            layout.addLayout(form)
+            logical_type = node.output_type or node.input_type
+            form.addRow("Type", self._readonly_field(logical_type or "unknown"))
+            ros_type = self.message_type_by_logical.get(logical_type, "unknown") if logical_type else "unknown"
+            form.addRow("ROS type", self._readonly_field(ros_type))
+            type_adapter = self.type_adapter_by_logical.get(logical_type, "unknown") if logical_type else "unknown"
+            form.addRow("Type adapter", self._readonly_field(type_adapter))
+            type_package = self.type_package_by_logical.get(logical_type, "unknown") if logical_type else "unknown"
+            form.addRow("Type package", self._readonly_field(type_package))
+            tabs.addTab(general, "General")
+            self._add_topic_connection_tab(tabs, dialog, node, True)
+            self._add_topic_connection_tab(tabs, dialog, node, False)
+            layout.addWidget(tabs)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
@@ -1631,6 +1296,61 @@ class PipelineEditor(Plugin):
         field = QLineEdit(text, self.widget)
         field.setReadOnly(True)
         return field
+
+    def _topic_connection_rows(self, topic_node: Node, publishers: bool) -> list[tuple[str, str, str]]:
+        nodes_by_id = {graph_node.id: graph_node for graph_node in self.graph.nodes}
+        rows: list[tuple[str, str, str]] = []
+        for edge in self.graph.edges:
+            if publishers:
+                if edge.target.node != topic_node.id:
+                    continue
+                filter_node = nodes_by_id.get(edge.source.node)
+                if filter_node is None or filter_node.type != "filter":
+                    continue
+                port = self._canonical_output_port(filter_node, edge.source.port)
+                description = self._parameter_description(filter_node, f"outputs.{port}.topic")
+            else:
+                if edge.source.node != topic_node.id:
+                    continue
+                filter_node = nodes_by_id.get(edge.target.node)
+                if filter_node is None or filter_node.type != "filter":
+                    continue
+                port = self._canonical_input_port(filter_node, edge.target.port)
+                description = self._parameter_description(filter_node, f"inputs.{port}.topic")
+            rows.append((self._filter_display_name(filter_node), port, description or "No description."))
+        return rows
+
+    def _filter_display_name(self, node: Node) -> str:
+        name = node.name or node.id
+        if name == node.id:
+            return node.id
+        return f"{name} ({node.id})"
+
+    def _add_topic_connection_tab(
+        self,
+        tabs: QTabWidget,
+        dialog: QDialog,
+        topic_node: Node,
+        publishers: bool,
+    ) -> None:
+        scroll = QScrollArea(dialog)
+        scroll.setWidgetResizable(True)
+        page = QWidget(scroll)
+        form = QFormLayout(page)
+        rows = self._topic_connection_rows(topic_node, publishers)
+        if not rows:
+            form.addRow(QLabel("No publishers." if publishers else "No subscribers.", dialog))
+        for index, (filter_name, port, description) in enumerate(rows):
+            if index:
+                line = QFrame(dialog)
+                line.setFrameShape(QFrame.HLine)
+                line.setFrameShadow(QFrame.Sunken)
+                form.addRow(line)
+            form.addRow("Filter", self._readonly_field(filter_name))
+            form.addRow("Port", self._readonly_field(port or ("out" if publishers else "in")))
+            form.addRow("Description", self._readonly_field(description))
+        scroll.setWidget(page)
+        tabs.addTab(scroll, "Publisher" if publishers else "Subscriber")
 
     def _ensure_filter_port_configs(self, node: Node) -> None:
         for port, config in self._default_port_configs(node.input_ports or node.input_type, False).items():

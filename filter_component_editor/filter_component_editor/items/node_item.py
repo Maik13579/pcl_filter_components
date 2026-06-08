@@ -1,0 +1,161 @@
+# Copyright 2026 Maik Knof
+# SPDX-License-Identifier: Apache-2.0
+
+from python_qt_binding.QtCore import QPointF
+from python_qt_binding.QtGui import QColor, QBrush, QFontMetrics, QPainter, QPen, QPolygonF
+from python_qt_binding.QtWidgets import (
+    QGraphicsEllipseItem,
+    QGraphicsItem,
+    QGraphicsRectItem,
+    QGraphicsSimpleTextItem,
+)
+
+from filter_component_editor.items.port_item import PortItem
+from filter_component_editor.pipeline_graph import Node
+
+
+class NodeItem(QGraphicsRectItem):
+    def __init__(self, node: Node, editor: "PipelineEditor") -> None:
+        title_text = node.topic if node.type == "topic" else node.name or node.id
+        subtitle_text = self._topic_subtitle_text(node)
+        title_font = editor.widget.font()
+        title_font.setBold(True)
+        if node.type == "topic":
+            width = 280
+            height = 68
+        else:
+            row_texts = self._filter_row_texts_for_node(node)
+            metrics = QFontMetrics(editor.widget.font())
+            title_metrics = QFontMetrics(title_font)
+            row_widths = [
+                title_metrics.horizontalAdvance(row_texts[0]),
+                *(metrics.horizontalAdvance(text) for text in row_texts[1:]),
+            ]
+            width = max(210, max(row_widths) + 24)
+            height = 78
+        super().__init__(0, 0, width, height)
+        self.node = node
+        self.editor = editor
+        self.setFlag(QGraphicsItem.ItemIsMovable)
+        self.setFlag(QGraphicsItem.ItemIsSelectable)
+        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
+        self.border_color = self.editor.theme_color("mid")
+        self.setBrush(self.editor.node_fill(node.type))
+        self.setPen(QPen(self.border_color, 1.5))
+        if node.type == "topic":
+            title = QGraphicsSimpleTextItem(title_text, self)
+            title.setPos(54, 14)
+            title.setBrush(self.editor.theme_color("text"))
+            subtitle = QGraphicsSimpleTextItem(subtitle_text, self)
+            subtitle.setPos(54, 38)
+            subtitle.setBrush(self.editor.theme_color("text"))
+        else:
+            for index, text in enumerate(row_texts):
+                row = QGraphicsSimpleTextItem(text, self)
+                if index == 0:
+                    row.setFont(title_font)
+                row.setPos(12, 8 + index * 21)
+                row.setBrush(self.editor.theme_color("text"))
+        input_pos, output_pos = self._port_positions()
+        port_diameter = self._port_diameter()
+        if node.type == "topic":
+            self.input_port = QGraphicsEllipseItem(0, 0, port_diameter, port_diameter, self)
+            self.output_port = QGraphicsEllipseItem(0, 0, port_diameter, port_diameter, self)
+        else:
+            label_color = self.editor.theme_color("text")
+            self.input_port = PortItem("I", port_diameter, label_color, self)
+            self.output_port = PortItem("O", port_diameter, label_color, self)
+        self.input_port.setPos(input_pos)
+        self.output_port.setPos(output_pos)
+        if node.type == "topic":
+            port_brush = QBrush(self.editor.theme_color("text"))
+            self.input_port.setBrush(port_brush)
+            self.output_port.setBrush(port_brush)
+        else:
+            port_brush = QBrush(self._filter_port_color())
+            self.input_port.setBrush(port_brush)
+            self.output_port.setBrush(port_brush)
+            self.input_port.setPen(QPen(self.editor.theme_color("text"), 1.5))
+            self.output_port.setPen(QPen(self.editor.theme_color("text"), 1.5))
+        self.update_port_visibility()
+
+    def paint(self, painter, option, widget=None) -> None:
+        if self.isSelected():
+            self.setPen(QPen(self.editor.accent_color("selected"), 3.0))
+            self.setBrush(self.editor.selected_node_fill(self.node.type))
+        else:
+            self.setPen(QPen(self.border_color, 1.5))
+            self.setBrush(self.editor.node_fill(self.node.type))
+        if self.node.type == "topic":
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(self.pen())
+            painter.setBrush(self.brush())
+            painter.drawPolygon(
+                QPolygonF([
+                    QPointF(28.0, 8.0),
+                    QPointF(52.0, 34.0),
+                    QPointF(28.0, 60.0),
+                    QPointF(4.0, 34.0),
+                ])
+            )
+            return
+        painter.setRenderHint(QPainter.Antialiasing)
+        rect = self.rect()
+        painter.setPen(self.pen())
+        painter.setBrush(self.brush())
+        painter.drawRoundedRect(rect, 6.0, 6.0)
+
+    def itemChange(self, change, value):
+        result = super().itemChange(change, value)
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            self.editor.expand_scene_for_item(self)
+            self.editor.refresh_edges()
+        return result
+
+    def input_anchor(self, port: str = "in") -> QPointF:
+        return self.input_port.sceneBoundingRect().center()
+
+    def output_anchor(self, port: str = "out") -> QPointF:
+        return self.output_port.sceneBoundingRect().center()
+
+    def _port_positions(self) -> tuple[QPointF, QPointF]:
+        width = self.rect().width()
+        height = self.rect().height()
+        radius = self._port_diameter() / 2.0
+        if self.editor.top_down_mode:
+            if self.node.type == "topic":
+                center_x = 28
+                return QPointF(center_x - radius, 0), QPointF(center_x - radius, 56)
+            center_x = width / 2.0
+            return QPointF(center_x - radius, -radius), QPointF(center_x - radius, height - radius)
+        if self.node.type == "topic":
+            return QPointF(0, 28), QPointF(40, 28)
+        center_y = height / 2.0
+        return QPointF(-radius, center_y - radius), QPointF(width - radius, center_y - radius)
+
+    def output_port_name(self, item) -> str:
+        return "out"
+
+    def update_port_visibility(self) -> None:
+        if self.node.type != "filter":
+            self.input_port.setVisible(True)
+            self.output_port.setVisible(True)
+            return
+        self.input_port.setVisible(bool(self.editor.available_input_ports(self.node)))
+        self.output_port.setVisible(bool(self.editor.available_output_ports(self.node)))
+
+    def _topic_subtitle_text(self, node: Node) -> str:
+        return node.output_type or node.input_type or "topic"
+
+    def _filter_row_texts_for_node(self, node: Node) -> list[str]:
+        return [
+            node.name or node.id or "unknown",
+            f"Type: {node.filter or 'filter'}",
+            f"Package: {node.package or 'unknown'}",
+        ]
+
+    def _port_diameter(self) -> float:
+        return 12.0 if self.node.type == "topic" else 18.0
+
+    def _filter_port_color(self) -> QColor:
+        return self.editor.theme_color("base")
