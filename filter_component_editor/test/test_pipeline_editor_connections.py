@@ -107,6 +107,7 @@ def editor_for(graph: Graph) -> PipelineEditor:
         "PointXYZ": "sensor_msgs/msg/PointCloud2",
         "PointXYZI": "sensor_msgs/msg/PointCloud2",
         "PointIndices": "pcl_msgs/msg/PointIndices",
+        "GridMap": "grid_map_msgs/msg/GridMap",
     }
     return editor
 
@@ -194,6 +195,41 @@ def chain_node(parameters: dict[str, object] | None = None) -> Node:
         output_type="PointXYZI",
         parameters=parameters or {},
     )
+
+
+def grid_map_chain_node(parameters: dict[str, object] | None = None) -> Node:
+    return Node(
+        id="grid_map_chain",
+        name="grid_map_chain",
+        type="filter",
+        package="grid_map_components_filter_chain",
+        filter="RosFilterChainGridMap",
+        component_class="grid_map_components_filter_chain::RosFilterChainGridMapComponent",
+        input_type="GridMap",
+        output_type="GridMap",
+        parameters=parameters or {},
+    )
+
+
+def grid_map_chain_editor_for(graph: Graph) -> PipelineEditor:
+    editor = editor_for(graph)
+    editor.discovery = types.SimpleNamespace(
+        filters=[
+            types.SimpleNamespace(
+                package="grid_map_components_filter_chain",
+                filter="RosFilterChainGridMap",
+                component_class="grid_map_components_filter_chain::RosFilterChainGridMapComponent",
+                kind="filter_chain",
+                chain_data_type="grid_map::GridMap",
+                chain_param_prefix="filters",
+            ),
+        ],
+        filter_plugins=[],
+    )
+    editor.parameter_defaults_by_component = {
+        "grid_map_components_filter_chain::RosFilterChainGridMapComponent": {"in_place": False}
+    }
+    return editor
 
 
 def test_connection_verdict_returns_exact_for_matching_types() -> None:
@@ -470,3 +506,34 @@ def test_filter_chain_live_spec_reloads_on_parameter_change() -> None:
     assert specs["chain"]["parameters"]["filters.filter1.name"] == "first"
     assert specs["chain"]["parameters"]["filters.filter1.type"] == "pkg/First"
     assert specs["chain"]["parameters"]["in_place"] is True
+
+
+def test_grid_map_filter_chain_live_spec_stays_unconfigured_until_plugin_params_exist() -> None:
+    node = grid_map_chain_node(
+        {
+            "filters.filter1.name": "threshold",
+            "filters.filter1.type": "gridMapFilters/ThresholdFilter",
+        }
+    )
+    editor = grid_map_chain_editor_for(Graph(nodes=[node]))
+
+    specs = editor._live_component_specs()
+
+    assert specs["grid_map_chain"]["configure"] is False
+    assert specs["grid_map_chain"]["reload_on_parameter_change"] is True
+
+
+def test_grid_map_filter_chain_live_spec_configures_after_plugin_params_exist() -> None:
+    node = grid_map_chain_node(
+        {
+            "filters.filter1.name": "threshold",
+            "filters.filter1.type": "gridMapFilters/ThresholdFilter",
+            "filters.filter1.params.layer": "elevation",
+        }
+    )
+    editor = grid_map_chain_editor_for(Graph(nodes=[node]))
+
+    specs = editor._live_component_specs()
+
+    assert "configure" not in specs["grid_map_chain"]
+    assert specs["grid_map_chain"]["reload_on_parameter_change"] is True

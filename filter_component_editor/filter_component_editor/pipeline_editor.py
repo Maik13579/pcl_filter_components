@@ -1879,15 +1879,19 @@ class PipelineEditor(Plugin):
         def apply_chain_change(new_entries: list[dict[str, object]]) -> None:
             entries[:] = new_entries
             self._rewrite_chain_parameters(node, entries)
-            self._sync_live_pipeline()
+            discovery_error = None
             try:
                 self._refresh_filter_parameters_for_dialog(node)
             except Exception as error:
-                QMessageBox.critical(self.widget, "Parameter Discovery Failed", str(error))
+                discovery_error = error
             if refresh_parameters is not None:
                 refresh_parameters()
             entries[:] = self._chain_entries(node)
             rebuild_list()
+            if discovery_error is None:
+                self._sync_live_pipeline()
+            elif hasattr(self, "status"):
+                self.status.setText(f"Parameter discovery deferred: {discovery_error}")
 
         def add_filter() -> None:
             if not plugins:
@@ -1971,14 +1975,62 @@ class PipelineEditor(Plugin):
         tree.setColumnCount(2)
         tree.setHeaderLabels(["Parameter", "Value"])
         layout.addWidget(tree)
-        widgets = self._populate_parameter_tree(
-            dialog,
-            tree,
-            scoped_parameters,
-            lambda key: self._parameter_description(node, f"{parameter_prefix}{key}"),
-        ) if scoped_parameters else {}
-        if not scoped_parameters:
-            tree.addTopLevelItem(QTreeWidgetItem(["No editable parameters.", ""]))
+        widgets: dict[str, QLineEdit | QCheckBox] = {}
+
+        def rebuild_tree() -> None:
+            tree.clear()
+            widgets.clear()
+            if scoped_parameters:
+                widgets.update(self._populate_parameter_tree(
+                    dialog,
+                    tree,
+                    scoped_parameters,
+                    lambda key: self._parameter_description(node, f"{parameter_prefix}{key}"),
+                ))
+            else:
+                tree.addTopLevelItem(QTreeWidgetItem(["No editable parameters.", ""]))
+
+        def selected_parameter_name() -> str:
+            item = tree.currentItem()
+            if item is None:
+                return ""
+            parts = [item.text(0)]
+            parent = item.parent()
+            while parent is not None:
+                parts.append(parent.text(0))
+                parent = parent.parent()
+            parts.reverse()
+            name = ".".join(part for part in parts if part)
+            return name if name in scoped_parameters else ""
+
+        def add_parameter() -> None:
+            name, accepted = QInputDialog.getText(dialog, "Add Parameter", "Parameter name")
+            name = name.strip() if accepted else ""
+            if not name:
+                return
+            if name in scoped_parameters:
+                QMessageBox.warning(dialog, "Duplicate Parameter", f"Parameter {name} already exists.")
+                return
+            scoped_parameters[name] = ""
+            rebuild_tree()
+
+        def remove_parameter() -> None:
+            name = selected_parameter_name()
+            if not name:
+                return
+            scoped_parameters.pop(name, None)
+            node.parameters.pop(f"{parameter_prefix}{name}", None)
+            rebuild_tree()
+
+        rebuild_tree()
+        controls = QHBoxLayout()
+        add_button = QPushButton("Add Parameter", dialog)
+        remove_button = QPushButton("Remove Selected", dialog)
+        add_button.clicked.connect(add_parameter)
+        remove_button.clicked.connect(remove_parameter)
+        controls.addWidget(add_button)
+        controls.addWidget(remove_button)
+        layout.addLayout(controls)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
@@ -2290,7 +2342,17 @@ class PipelineEditor(Plugin):
             }
             if self._is_filter_chain(node):
                 specs[node.id]["reload_on_parameter_change"] = True
+                if not self._filter_chain_is_ready_for_configure(node):
+                    specs[node.id]["configure"] = False
         return specs
+
+    def _filter_chain_is_ready_for_configure(self, node: Node) -> bool:
+        if node.package != "grid_map_components_filter_chain":
+            return True
+        entries = self._chain_entries(node)
+        if not entries:
+            return True
+        return all(bool(entry.get("params")) for entry in entries)
 
     def _live_parameters_for_node(self, node: Node) -> dict[str, object]:
         self._sanitize_filter_parameters(node)
