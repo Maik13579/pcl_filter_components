@@ -104,7 +104,7 @@ class PipelineEditor(Plugin):
         self._refresh_filter_list()
         side.addWidget(self.filter_list, 1)
 
-        self.status = QLabel("Double-click a filter to add it. Drag output dot to input dot to connect.")
+        self.status = QLabel("Double-click a filter to add it. Drag output dots onto filters or topics to connect.")
         self.status.setWordWrap(True)
         side.addWidget(self.status)
 

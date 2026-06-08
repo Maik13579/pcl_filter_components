@@ -114,6 +114,8 @@ class NodeItem(QGraphicsRectItem):
         return result
 
     def input_anchor(self, port: str = "in") -> QPointF:
+        if self.node.type == "topic":
+            return self.mapToScene(QPointF(28.0, 34.0))
         return self.input_port.sceneBoundingRect().center()
 
     def output_anchor(self, port: str = "out") -> QPointF:
@@ -138,6 +140,10 @@ class NodeItem(QGraphicsRectItem):
         return "out"
 
     def update_port_visibility(self) -> None:
+        if self.node.type == "topic":
+            self.input_port.setVisible(False)
+            self.output_port.setVisible(True)
+            return
         if self.node.type != "filter":
             self.input_port.setVisible(True)
             self.output_port.setVisible(True)
