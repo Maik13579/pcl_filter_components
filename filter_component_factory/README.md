@@ -23,10 +23,10 @@ For example:
 
 ```yaml
 edges:
-  - from: {node: /points/input, port: out}
-    to: {node: VoxelGridXYZI_1, port: cloud}
-  - from: {node: VoxelGridXYZI_1, port: cloud}
-    to: {node: /points/output, port: in}
+  - from: {node: /points/input, port: out, direction: output}
+    to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
+  - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
+    to: {node: /points/output, port: in, direction: input}
 ```
 
 maps to these component parameters on `VoxelGridXYZI_1`:

@@ -1,4 +1,4 @@
-version: 1
+version: 2
 editor:
   orientation: top_down
 nodes:
@@ -59,11 +59,11 @@ nodes:
     output_type: PointXYZI
     position: {x: 280.0, y: 640.0}
 edges:
-  - from: {node: /points/input, port: out}
-    to: {node: VoxelGridXYZI_1, port: in}
-  - from: {node: VoxelGridXYZI_1, port: out}
-    to: {node: /pcl_pipeline/voxel_filtered, port: in}
-  - from: {node: /pcl_pipeline/voxel_filtered, port: out}
-    to: {node: CropBoxXYZI_1, port: in}
-  - from: {node: CropBoxXYZI_1, port: out}
-    to: {node: /points/output, port: in}
+  - from: {node: /points/input, port: out, direction: output}
+    to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
+  - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
+    to: {node: /pcl_pipeline/voxel_filtered, port: in, direction: input}
+  - from: {node: /pcl_pipeline/voxel_filtered, port: out, direction: output}
+    to: {node: CropBoxXYZI_1, port: cloud, direction: input}
+  - from: {node: CropBoxXYZI_1, port: cloud, direction: output}
+    to: {node: /points/output, port: in, direction: input}

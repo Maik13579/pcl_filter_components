@@ -81,6 +81,7 @@ PipelinePort parsePort(const YAML::Node & node)
   PipelinePort port;
   port.node = requireString(node, "node");
   port.port = optionalString(node, "port");
+  port.direction = requireString(node, "direction");
   return port;
 }
 
@@ -227,7 +228,7 @@ PipelineGraph loadPipelineGraph(const std::string & path)
   }
 
   PipelineGraph graph;
-  graph.version = root["version"] ? root["version"].as<int>() : 1;
+  graph.version = root["version"] ? root["version"].as<int>() : 0;
   if (!root["nodes"] || !root["nodes"].IsSequence()) {
     throw std::runtime_error("Pipeline YAML must contain a nodes sequence");
   }
@@ -288,7 +289,7 @@ PipelineGraph loadPipelineGraph(const std::string & path)
 
 void validatePipelineGraph(const PipelineGraph & graph)
 {
-  if (graph.version != 1) {
+  if (graph.version != 2) {
     throw std::runtime_error("Unsupported pipeline graph version " + std::to_string(graph.version));
   }
 
@@ -319,6 +320,12 @@ void validatePipelineGraph(const PipelineGraph & graph)
   }
 
   for (const auto & edge : graph.edges) {
+    if (edge.from.direction != "output") {
+      throw std::runtime_error("Edge from.direction must be 'output' for node '" + edge.from.node + "'");
+    }
+    if (edge.to.direction != "input") {
+      throw std::runtime_error("Edge to.direction must be 'input' for node '" + edge.to.node + "'");
+    }
     if (ids.count(edge.from.node) == 0U) {
       throw std::runtime_error("Edge references unknown source node '" + edge.from.node + "'");
     }

@@ -15,6 +15,7 @@ struct PipelinePort
 {
   std::string node;
   std::string port;
+  std::string direction;
 };
 
 struct PipelineEdge
@@ -51,7 +52,7 @@ struct PipelineNode
 
 struct PipelineGraph
 {
-  int version{1};
+  int version{2};
   std::vector<PipelineNode> nodes;
   std::vector<PipelineEdge> edges;
 };

@@ -8,6 +8,14 @@ import pytest
 from filter_component_editor.pipeline_graph import Edge, Graph, Node, PortRef, graph_from_dict, load_graph, save_graph
 
 
+def output(node: str, port: str = "") -> PortRef:
+    return PortRef(node, port, "output")
+
+
+def input_(node: str, port: str = "") -> PortRef:
+    return PortRef(node, port, "input")
+
+
 def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
     graph = Graph(
         editor={"orientation": "top_down"},
@@ -46,9 +54,9 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
             Node(id="/filtered", type="topic", topic="/filtered", input_type="PointXYZI", output_type="PointXYZI"),
         ],
         edges=[
-            Edge(PortRef("/points", "out"), PortRef("VoxelGridXYZI_1", "in")),
-            Edge(PortRef("VoxelGridXYZI_1", "out"), PortRef("/pcl_pipeline/voxel_to_output", "in")),
-            Edge(PortRef("/pcl_pipeline/voxel_to_output", "out"), PortRef("/filtered", "in")),
+            Edge(output("/points", "out"), input_("VoxelGridXYZI_1", "in")),
+            Edge(output("VoxelGridXYZI_1", "out"), input_("/pcl_pipeline/voxel_to_output", "in")),
+            Edge(output("/pcl_pipeline/voxel_to_output", "out"), input_("/filtered", "in")),
         ],
     )
     path = tmp_path / "pipeline.yaml"
@@ -64,6 +72,10 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
     assert "compatibility:" not in path.read_text(encoding="utf-8")
     assert "transient_local" in path.read_text(encoding="utf-8")
     assert "qos:\n      depth: 7" not in path.read_text(encoding="utf-8")
+    assert "version: 2" in path.read_text(encoding="utf-8")
+    assert "direction: output" in path.read_text(encoding="utf-8")
+    assert "direction: input" in path.read_text(encoding="utf-8")
+    assert "port: cloud" in path.read_text(encoding="utf-8")
     loaded = load_graph(str(path))
 
     assert loaded.nodes[1].input_type == "PointXYZI"
@@ -83,7 +95,7 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
 def test_graph_load_ignores_old_edge_qos() -> None:
     loaded = graph_from_dict(
         {
-            "version": 1,
+            "version": 2,
             "nodes": [
                 {"type": "topic", "topic": "/a", "input_type": "PointXYZI", "output_type": "PointXYZI"},
                 {
@@ -97,8 +109,8 @@ def test_graph_load_ignores_old_edge_qos() -> None:
             ],
             "edges": [
                 {
-                    "from": {"node": "/a", "port": "out"},
-                    "to": {"node": "VoxelGridXYZI_1", "port": "in"},
+                    "from": {"node": "/a", "port": "out", "direction": "output"},
+                    "to": {"node": "VoxelGridXYZI_1", "port": "in", "direction": "input"},
                     "qos": {"reliability": "reliable"},
                 }
             ],
@@ -108,10 +120,121 @@ def test_graph_load_ignores_old_edge_qos() -> None:
     assert loaded.edges[0].qos == {}
 
 
+def test_graph_load_rejects_missing_endpoint_direction() -> None:
+    with pytest.raises(ValueError, match="from.direction"):
+        graph_from_dict(
+            {
+                "version": 2,
+                "nodes": [
+                    {"type": "topic", "topic": "/a", "input_type": "PointXYZI", "output_type": "PointXYZI"},
+                    {
+                        "type": "filter",
+                        "name": "VoxelGridXYZI_1",
+                        "package": "pcl_filter_components_xyzi",
+                        "filter": "VoxelGridXYZI",
+                        "input_type": "PointXYZI",
+                        "output_type": "PointXYZI",
+                    },
+                ],
+                "edges": [
+                    {
+                        "from": {"node": "/a", "port": "out"},
+                        "to": {"node": "VoxelGridXYZI_1", "port": "cloud", "direction": "input"},
+                    }
+                ],
+            }
+        )
+
+
+def test_graph_load_rejects_wrong_endpoint_direction() -> None:
+    with pytest.raises(ValueError, match="from.direction"):
+        graph_from_dict(
+            {
+                "version": 2,
+                "nodes": [
+                    {"type": "topic", "topic": "/a", "input_type": "PointXYZI", "output_type": "PointXYZI"},
+                    {
+                        "type": "filter",
+                        "name": "VoxelGridXYZI_1",
+                        "package": "pcl_filter_components_xyzi",
+                        "filter": "VoxelGridXYZI",
+                        "input_type": "PointXYZI",
+                        "output_type": "PointXYZI",
+                    },
+                ],
+                "edges": [
+                    {
+                        "from": {"node": "/a", "port": "out", "direction": "input"},
+                        "to": {"node": "VoxelGridXYZI_1", "port": "cloud", "direction": "input"},
+                    }
+                ],
+            }
+        )
+    with pytest.raises(ValueError, match="to.direction"):
+        graph_from_dict(
+            {
+                "version": 2,
+                "nodes": [
+                    {"type": "topic", "topic": "/a", "input_type": "PointXYZI", "output_type": "PointXYZI"},
+                    {
+                        "type": "filter",
+                        "name": "VoxelGridXYZI_1",
+                        "package": "pcl_filter_components_xyzi",
+                        "filter": "VoxelGridXYZI",
+                        "input_type": "PointXYZI",
+                        "output_type": "PointXYZI",
+                    },
+                ],
+                "edges": [
+                    {
+                        "from": {"node": "/a", "port": "out", "direction": "output"},
+                        "to": {"node": "VoxelGridXYZI_1", "port": "cloud", "direction": "output"},
+                    }
+                ],
+            }
+        )
+
+
+def test_graph_load_rejects_version_1() -> None:
+    with pytest.raises(ValueError, match="unsupported graph version 1"):
+        graph_from_dict({"version": 1, "nodes": [], "edges": []})
+
+
+def test_graph_save_canonicalizes_same_named_filter_ports(tmp_path: Path) -> None:
+    graph = Graph(
+        nodes=[
+            Node(id="/input", type="topic", topic="/input", input_type="PointXYZI", output_type="PointXYZI"),
+            Node(
+                id="VoxelGridXYZI_1",
+                name="VoxelGridXYZI_1",
+                type="filter",
+                package="pcl_filter_components_xyzi",
+                filter="VoxelGridXYZI",
+                input_ports="cloud:PointXYZI",
+                output_ports="cloud:PointXYZI",
+            ),
+            Node(id="/output", type="topic", topic="/output", input_type="PointXYZI", output_type="PointXYZI"),
+        ],
+        edges=[
+            Edge(output("/input", "out"), input_("VoxelGridXYZI_1", "in")),
+            Edge(output("VoxelGridXYZI_1", "out"), input_("/output", "in")),
+        ],
+    )
+    path = tmp_path / "pipeline.yaml"
+
+    save_graph(graph, str(path))
+    loaded = load_graph(str(path))
+
+    assert loaded.edges[0].target.port == "cloud"
+    assert loaded.edges[0].target.direction == "input"
+    assert loaded.edges[1].source.port == "cloud"
+    assert loaded.edges[1].source.direction == "output"
+
+
 def test_graph_load_migrates_legacy_sync_parameters() -> None:
     loaded = graph_from_dict(
         {
-            "version": 1,
+            "version": 2,
             "nodes": [
                 {
                     "type": "filter",
@@ -148,7 +271,7 @@ def test_graph_round_trip_preserves_ros_message_compatibility(tmp_path: Path) ->
                 output_type="PointXYZI",
             ),
         ],
-        edges=[Edge(PortRef("/points", "out"), PortRef("VoxelGridXYZI_1", "in"), compatibility="ros_message")],
+        edges=[Edge(output("/points", "out"), input_("VoxelGridXYZI_1", "in"), compatibility="ros_message")],
     )
     path = tmp_path / "pipeline.yaml"
 
@@ -174,7 +297,7 @@ def test_graph_accepts_marked_ros_message_compatible_type_mismatch() -> None:
                 output_type="PointXYZI",
             ),
         ],
-        edges=[Edge(PortRef("/points"), PortRef("VoxelGridXYZI_1"), compatibility="ros_message")],
+        edges=[Edge(output("/points"), input_("VoxelGridXYZI_1"), compatibility="ros_message")],
     )
 
     graph.validate(
@@ -199,7 +322,7 @@ def test_graph_rejects_marked_ros_message_type_mismatch_when_ros_types_differ() 
                 output_type="PointXYZI",
             ),
         ],
-        edges=[Edge(PortRef("/indices"), PortRef("VoxelGridXYZI_1"), compatibility="ros_message")],
+        edges=[Edge(output("/indices"), input_("VoxelGridXYZI_1"), compatibility="ros_message")],
     )
 
     with pytest.raises(ValueError, match="type mismatch"):
@@ -225,7 +348,7 @@ def test_graph_rejects_incompatible_custom_types() -> None:
                 output_type="PointXYZI",
             ),
         ],
-        edges=[Edge(PortRef("/indices"), PortRef("VoxelGridXYZI_1"))],
+        edges=[Edge(output("/indices"), input_("VoxelGridXYZI_1"))],
     )
 
     with pytest.raises(ValueError):
@@ -238,7 +361,7 @@ def test_graph_rejects_topic_type_mismatch() -> None:
             Node(id="filter_1", type="filter", package="pcl_filter_components_xyzi", filter="VoxelGridXYZI", output_type="PointXYZI"),
             Node(id="/indices", type="topic", topic="/indices", input_type="PointIndices", output_type="PointIndices"),
         ],
-        edges=[Edge(PortRef("filter_1"), PortRef("/indices"))],
+        edges=[Edge(output("filter_1"), input_("/indices"))],
     )
 
     with pytest.raises(ValueError):
@@ -258,7 +381,7 @@ def test_graph_accepts_original_cloud_output_port() -> None:
             ),
             Node(id="/original", type="topic", topic="/original", input_type="PointXYZI", output_type="PointXYZI"),
         ],
-        edges=[Edge(PortRef("VoxelGridXYZI_1", "orig_cloud"), PortRef("/original", "in"))],
+        edges=[Edge(output("VoxelGridXYZI_1", "orig_cloud"), input_("/original", "in"))],
     )
 
     graph.validate()
@@ -280,8 +403,8 @@ def test_graph_accepts_repeated_input_ports() -> None:
             ),
         ],
         edges=[
-            Edge(PortRef("/a", "out"), PortRef("PointCloudMergerXYZI_1", "input_1")),
-            Edge(PortRef("/b", "out"), PortRef("PointCloudMergerXYZI_1", "input_2")),
+            Edge(output("/a", "out"), input_("PointCloudMergerXYZI_1", "input_1")),
+            Edge(output("/b", "out"), input_("PointCloudMergerXYZI_1", "input_2")),
         ],
     )
 
@@ -304,8 +427,8 @@ def test_graph_rejects_duplicate_filter_input_port() -> None:
             ),
         ],
         edges=[
-            Edge(PortRef("/a", "out"), PortRef("PointCloudMergerXYZI_1", "input_1")),
-            Edge(PortRef("/b", "out"), PortRef("PointCloudMergerXYZI_1", "input_1")),
+            Edge(output("/a", "out"), input_("PointCloudMergerXYZI_1", "input_1")),
+            Edge(output("/b", "out"), input_("PointCloudMergerXYZI_1", "input_1")),
         ],
     )
 
@@ -329,8 +452,8 @@ def test_graph_rejects_duplicate_filter_output_port() -> None:
             Node(id="/b", type="topic", topic="/b", input_type="PointXYZI", output_type="PointXYZI"),
         ],
         edges=[
-            Edge(PortRef("VoxelGridXYZI_1", "out"), PortRef("/a", "in")),
-            Edge(PortRef("VoxelGridXYZI_1", "out"), PortRef("/b", "in")),
+            Edge(output("VoxelGridXYZI_1", "out"), input_("/a", "in")),
+            Edge(output("VoxelGridXYZI_1", "out"), input_("/b", "in")),
         ],
     )
 
@@ -355,8 +478,8 @@ def test_graph_accepts_explicit_repeated_output_ports() -> None:
             Node(id="/original", type="topic", topic="/original", input_type="PointXYZI", output_type="PointXYZI"),
         ],
         edges=[
-            Edge(PortRef("VoxelGridXYZI_1", "cloud"), PortRef("/filtered", "in")),
-            Edge(PortRef("VoxelGridXYZI_1", "orig_cloud"), PortRef("/original", "in")),
+            Edge(output("VoxelGridXYZI_1", "cloud"), input_("/filtered", "in")),
+            Edge(output("VoxelGridXYZI_1", "orig_cloud"), input_("/original", "in")),
         ],
     )
 

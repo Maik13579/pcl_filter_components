@@ -800,6 +800,8 @@ class PipelineEditor(Plugin):
                 f"{source.node.id} produces {source_type}, but {target.node.id} expects {target_type}.",
             )
             return
+        source_port = self._canonical_output_port(source.node, source_port) if source.node.type == "filter" else source_port
+        target_port = self._canonical_input_port(target.node, target_port) if target.node.type == "filter" else target_port
         for edge in self.graph.edges:
             if (
                 edge.source.node == source.node.id
@@ -809,8 +811,8 @@ class PipelineEditor(Plugin):
             ):
                 return
         edge = Edge(
-            PortRef(source.node.id, source_port),
-            PortRef(target.node.id, target_port),
+            PortRef(source.node.id, source_port, "output"),
+            PortRef(target.node.id, target_port, "input"),
             compatibility=ROS_MESSAGE_COMPATIBILITY if compatibility == ROS_MESSAGE_COMPATIBILITY else "",
         )
         self.graph.edges.append(edge)

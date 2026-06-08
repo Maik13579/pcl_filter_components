@@ -128,7 +128,7 @@ class NodeItem(QGraphicsRectItem):
                 center_x = 28
                 return QPointF(center_x - radius, 0), QPointF(center_x - radius, 56)
             center_x = width / 2.0
-            return QPointF(center_x - radius, height), QPointF(center_x - radius, -radius * 2.0)
+            return QPointF(center_x - radius, -radius * 2.0), QPointF(center_x - radius, height)
         if self.node.type == "topic":
             return QPointF(0, 28), QPointF(40, 28)
         center_y = height / 2.0

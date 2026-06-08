@@ -22,7 +22,7 @@ std::string writeFactoryPipeline()
   const auto path = std::string{"/tmp/pcl_filter_components_factory_test.yaml"};
   std::ofstream stream{path};
   stream << R"(
-version: 1
+version: 2
 nodes:
   - type: topic
     topic: /points/input
@@ -50,12 +50,12 @@ nodes:
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
-  - from: {node: /points/input, port: out}
-    to: {node: VoxelGridXYZI_1, port: in}
-  - from: {node: VoxelGridXYZI_1, port: out}
-    to: {node: /pcl_pipeline/voxel_filtered, port: in}
-  - from: {node: /pcl_pipeline/voxel_filtered, port: out}
-    to: {node: /points/output, port: in}
+  - from: {node: /points/input, port: out, direction: output}
+    to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
+  - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
+    to: {node: /pcl_pipeline/voxel_filtered, port: in, direction: input}
+  - from: {node: /pcl_pipeline/voxel_filtered, port: out, direction: output}
+    to: {node: /points/output, port: in, direction: input}
 )";
   return path;
 }
@@ -65,7 +65,7 @@ std::string writeMergerPipeline()
   const auto path = std::string{"/tmp/pcl_filter_components_merger_factory_test.yaml"};
   std::ofstream stream{path};
   stream << R"(
-version: 1
+version: 2
 nodes:
   - type: topic
     topic: /points/input_a
@@ -86,12 +86,12 @@ nodes:
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
-  - from: {node: /points/input_a, port: out}
-    to: {node: PointCloudMergerXYZI_1, port: input_1}
-  - from: {node: /points/input_b, port: out}
-    to: {node: PointCloudMergerXYZI_1, port: input_2}
-  - from: {node: PointCloudMergerXYZI_1, port: out}
-    to: {node: /points/merged, port: in}
+  - from: {node: /points/input_a, port: out, direction: output}
+    to: {node: PointCloudMergerXYZI_1, port: input_1, direction: input}
+  - from: {node: /points/input_b, port: out, direction: output}
+    to: {node: PointCloudMergerXYZI_1, port: input_2, direction: input}
+  - from: {node: PointCloudMergerXYZI_1, port: cloud, direction: output}
+    to: {node: /points/merged, port: in, direction: input}
 )";
   return path;
 }

@@ -11,9 +11,10 @@ import yaml
 class PortRef:
     node: str
     port: str = ""
+    direction: str = ""
 
     def to_dict(self) -> dict[str, str]:
-        data = {"node": self.node}
+        data = {"node": self.node, "direction": self.direction}
         if self.port:
             data["port"] = self.port
         return data
@@ -89,7 +90,7 @@ class Node:
 
 @dataclass
 class Graph:
-    version: int = 1
+    version: int = 2
     editor: dict[str, Any] = field(default_factory=dict)
     nodes: list[Node] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
@@ -99,6 +100,8 @@ class Graph:
         type_by_node: dict[str, str] | None = None,
         message_type_by_logical: dict[str, str] | None = None,
     ) -> None:
+        if self.version != 2:
+            raise ValueError(f"unsupported graph version {self.version}")
         ids: set[str] = set()
         nodes_by_id: dict[str, Node] = {}
         for node in self.nodes:
@@ -120,6 +123,10 @@ class Graph:
         for edge in self.edges:
             if edge.compatibility and edge.compatibility != "ros_message":
                 raise ValueError(f"unsupported edge compatibility {edge.compatibility}")
+            if edge.source.direction != "output":
+                raise ValueError(f"edge from.direction must be output for {edge.source.node}")
+            if edge.target.direction != "input":
+                raise ValueError(f"edge to.direction must be input for {edge.target.node}")
             if edge.source.node not in ids:
                 raise ValueError(f"edge source {edge.source.node} does not exist")
             if edge.target.node not in ids:
@@ -154,7 +161,7 @@ class Graph:
             if source_node.type == "filter":
                 key = (
                     source_node.id,
-                    _canonical_port(source_node.output_ports or source_node.output_type, edge.source.port, True),
+                    _canonical_filter_port(source_node, edge.source.port, True),
                 )
                 if key in used_outputs:
                     raise ValueError(f"filter output {source_node.id}:{key[1]} is already connected")
@@ -162,7 +169,7 @@ class Graph:
             if target_node.type == "filter":
                 key = (
                     target_node.id,
-                    _canonical_port(target_node.input_ports or target_node.input_type, edge.target.port, False),
+                    _canonical_filter_port(target_node, edge.target.port, False),
                 )
                 if key in used_inputs:
                     raise ValueError(f"filter input {target_node.id}:{key[1]} is already connected")
@@ -182,6 +189,7 @@ class Graph:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        self._canonicalize_edge_ports()
         return {
             "version": self.version,
             "editor": self.editor,
@@ -189,9 +197,19 @@ class Graph:
             "edges": [edge.to_dict() for edge in self.edges],
         }
 
+    def _canonicalize_edge_ports(self) -> None:
+        nodes_by_id = {node.id: node for node in self.nodes}
+        for edge in self.edges:
+            source = nodes_by_id.get(edge.source.node)
+            target = nodes_by_id.get(edge.target.node)
+            if source is not None and source.type == "filter":
+                edge.source.port = _canonical_filter_port(source, edge.source.port, True)
+            if target is not None and target.type == "filter":
+                edge.target.port = _canonical_filter_port(target, edge.target.port, False)
+
 
 def graph_from_dict(data: dict[str, Any]) -> Graph:
-    graph = Graph(version=int(data.get("version", 1)))
+    graph = Graph(version=int(data.get("version", 0)))
     graph.editor = data.get("editor", {}) or {}
     for item in data.get("nodes", []):
         node_type = item["type"]
@@ -228,8 +246,8 @@ def graph_from_dict(data: dict[str, Any]) -> Graph:
     for item in data.get("edges", []):
         graph.edges.append(
             Edge(
-                PortRef(item["from"]["node"], item["from"].get("port", "")),
-                PortRef(item["to"]["node"], item["to"].get("port", "")),
+                PortRef(item["from"]["node"], item["from"].get("port", ""), item["from"].get("direction", "")),
+                PortRef(item["to"]["node"], item["to"].get("port", ""), item["to"].get("direction", "")),
                 item.get("topic", ""),
                 {},
                 item.get("position", {}) or {},
@@ -304,3 +322,13 @@ def _canonical_port(value: str, port: str, outgoing: bool) -> str:
         for index, (port_name, stream_type) in enumerate(ports)
     }
     return port if port in valid_ports else port
+
+
+def _canonical_filter_port(node: Node, port: str, outgoing: bool) -> str:
+    spec = (node.output_ports or node.output_type) if outgoing else (node.input_ports or node.input_type)
+    canonical = _canonical_port(spec, port, outgoing)
+    default_port = "out" if outgoing else "in"
+    configs = node.outputs if outgoing else node.inputs
+    if canonical == default_port and (not port or port in {"in", "out"}) and len(configs) == 1:
+        return next(iter(configs))
+    return canonical

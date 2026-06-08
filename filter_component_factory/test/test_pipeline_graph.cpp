@@ -22,7 +22,7 @@ std::string writeTempPipeline(const std::string & yaml)
 TEST(PipelineGraph, LoadsGraphAndPreservesTypes)
 {
   const auto path = writeTempPipeline(R"(
-version: 1
+version: 2
 nodes:
   - type: topic
     topic: /points
@@ -58,12 +58,12 @@ nodes:
       reliability: reliable
     position: {x: 120.0, y: 80.0}
 edges:
-  - from: {node: /points, port: out}
-    to: {node: VoxelGridXYZI_1, port: in}
-  - from: {node: VoxelGridXYZI_1, port: out}
-    to: {node: /pcl_pipeline/voxel_to_output, port: in}
-  - from: {node: /pcl_pipeline/voxel_to_output, port: out}
-    to: {node: /filtered, port: in}
+  - from: {node: /points, port: out, direction: output}
+    to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
+  - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
+    to: {node: /pcl_pipeline/voxel_to_output, port: in, direction: input}
+  - from: {node: /pcl_pipeline/voxel_to_output, port: out, direction: output}
+    to: {node: /filtered, port: in, direction: input}
 )");
 
   const auto graph = filter_component_factory::pipeline::loadPipelineGraph(path);
@@ -82,12 +82,101 @@ edges:
   EXPECT_DOUBLE_EQ(graph.nodes[3].x, 120.0);
   EXPECT_DOUBLE_EQ(graph.nodes[3].y, 80.0);
   ASSERT_EQ(graph.edges.size(), 3U);
+  EXPECT_EQ(graph.edges[0].from.direction, "output");
+  EXPECT_EQ(graph.edges[0].to.direction, "input");
+  EXPECT_EQ(graph.edges[0].to.port, "cloud");
+  EXPECT_EQ(graph.edges[1].from.port, "cloud");
+}
+
+TEST(PipelineGraph, RejectsMissingEndpointDirection)
+{
+  const auto path = writeTempPipeline(R"(
+version: 2
+nodes:
+  - type: topic
+    topic: /points
+    input_type: PointXYZI
+    output_type: PointXYZI
+  - type: filter
+    name: VoxelGridXYZI_1
+    package: pcl_filter_components_xyzi
+    filter: VoxelGridXYZI
+    input_type: PointXYZI
+    output_type: PointXYZI
+edges:
+  - from: {node: /points, port: out}
+    to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
+)");
+
+  EXPECT_THROW(
+    (void)filter_component_factory::pipeline::loadPipelineGraph(path),
+    std::runtime_error);
+}
+
+TEST(PipelineGraph, RejectsWrongEndpointDirection)
+{
+  const auto wrong_from_path = writeTempPipeline(R"(
+version: 2
+nodes:
+  - type: topic
+    topic: /points
+    input_type: PointXYZI
+    output_type: PointXYZI
+  - type: filter
+    name: VoxelGridXYZI_1
+    package: pcl_filter_components_xyzi
+    filter: VoxelGridXYZI
+    input_type: PointXYZI
+    output_type: PointXYZI
+edges:
+  - from: {node: /points, port: out, direction: input}
+    to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
+)");
+
+  EXPECT_THROW(
+    (void)filter_component_factory::pipeline::loadPipelineGraph(wrong_from_path),
+    std::runtime_error);
+
+  const auto wrong_to_path = writeTempPipeline(R"(
+version: 2
+nodes:
+  - type: topic
+    topic: /points
+    input_type: PointXYZI
+    output_type: PointXYZI
+  - type: filter
+    name: VoxelGridXYZI_1
+    package: pcl_filter_components_xyzi
+    filter: VoxelGridXYZI
+    input_type: PointXYZI
+    output_type: PointXYZI
+edges:
+  - from: {node: /points, port: out, direction: output}
+    to: {node: VoxelGridXYZI_1, port: cloud, direction: output}
+)");
+
+  EXPECT_THROW(
+    (void)filter_component_factory::pipeline::loadPipelineGraph(wrong_to_path),
+    std::runtime_error);
+}
+
+TEST(PipelineGraph, RejectsVersionOne)
+{
+  const auto path = writeTempPipeline(R"(
+version: 1
+nodes: []
+edges: []
+)");
+
+  EXPECT_THROW(
+    (void)filter_component_factory::pipeline::loadPipelineGraph(path),
+    std::runtime_error);
 }
 
 TEST(PipelineGraph, RejectsTypeIncompatibleEdges)
 {
   const auto path = writeTempPipeline(R"(
-version: 1
+version: 2
 nodes:
   - type: topic
     topic: /indices
@@ -100,8 +189,8 @@ nodes:
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
-  - from: {node: /indices}
-    to: {node: VoxelGridXYZI_1}
+  - from: {node: /indices, port: out, direction: output}
+    to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
 )");
 
   EXPECT_THROW(
@@ -112,7 +201,7 @@ edges:
 TEST(PipelineGraph, AcceptsOriginalCloudOutputPort)
 {
   const auto path = writeTempPipeline(R"(
-version: 1
+version: 2
 nodes:
   - type: filter
     name: VoxelGridXYZI_1
@@ -124,8 +213,8 @@ nodes:
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
-  - from: {node: VoxelGridXYZI_1, port: orig_cloud}
-    to: {node: /original, port: in}
+  - from: {node: VoxelGridXYZI_1, port: orig_cloud, direction: output}
+    to: {node: /original, port: in, direction: input}
 )");
 
   const auto graph = filter_component_factory::pipeline::loadPipelineGraph(path);
@@ -137,7 +226,7 @@ edges:
 TEST(PipelineGraph, AcceptsRepeatedInputPorts)
 {
   const auto path = writeTempPipeline(R"(
-version: 1
+version: 2
 nodes:
   - type: topic
     topic: /a
@@ -154,10 +243,10 @@ nodes:
     input_type: PointXYZI,PointXYZI
     output_type: PointXYZI
 edges:
-  - from: {node: /a, port: out}
-    to: {node: PointCloudMergerXYZI_1, port: input_1}
-  - from: {node: /b, port: out}
-    to: {node: PointCloudMergerXYZI_1, port: input_2}
+  - from: {node: /a, port: out, direction: output}
+    to: {node: PointCloudMergerXYZI_1, port: input_1, direction: input}
+  - from: {node: /b, port: out, direction: output}
+    to: {node: PointCloudMergerXYZI_1, port: input_2, direction: input}
 )");
 
   const auto graph = filter_component_factory::pipeline::loadPipelineGraph(path);
@@ -170,7 +259,7 @@ edges:
 TEST(PipelineGraph, RejectsDuplicateFilterInputPort)
 {
   const auto path = writeTempPipeline(R"(
-version: 1
+version: 2
 nodes:
   - type: topic
     topic: /a
@@ -187,10 +276,10 @@ nodes:
     input_type: PointXYZI,PointXYZI
     output_type: PointXYZI
 edges:
-  - from: {node: /a, port: out}
-    to: {node: PointCloudMergerXYZI_1, port: input_1}
-  - from: {node: /b, port: out}
-    to: {node: PointCloudMergerXYZI_1, port: input_1}
+  - from: {node: /a, port: out, direction: output}
+    to: {node: PointCloudMergerXYZI_1, port: input_1, direction: input}
+  - from: {node: /b, port: out, direction: output}
+    to: {node: PointCloudMergerXYZI_1, port: input_1, direction: input}
 )");
 
   EXPECT_THROW(
@@ -201,7 +290,7 @@ edges:
 TEST(PipelineGraph, RejectsDuplicateFilterOutputPort)
 {
   const auto path = writeTempPipeline(R"(
-version: 1
+version: 2
 nodes:
   - type: filter
     name: VoxelGridXYZI_1
@@ -218,10 +307,10 @@ nodes:
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
-  - from: {node: VoxelGridXYZI_1, port: out}
-    to: {node: /a, port: in}
-  - from: {node: VoxelGridXYZI_1, port: out}
-    to: {node: /b, port: in}
+  - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
+    to: {node: /a, port: in, direction: input}
+  - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
+    to: {node: /b, port: in, direction: input}
 )");
 
   EXPECT_THROW(
@@ -232,7 +321,7 @@ edges:
 TEST(PipelineGraph, AcceptsExplicitRepeatedOutputPorts)
 {
   const auto path = writeTempPipeline(R"(
-version: 1
+version: 2
 nodes:
   - type: filter
     name: VoxelGridXYZI_1
@@ -250,10 +339,10 @@ nodes:
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
-  - from: {node: VoxelGridXYZI_1, port: cloud}
-    to: {node: /filtered, port: in}
-  - from: {node: VoxelGridXYZI_1, port: orig_cloud}
-    to: {node: /original, port: in}
+  - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
+    to: {node: /filtered, port: in, direction: input}
+  - from: {node: VoxelGridXYZI_1, port: orig_cloud, direction: output}
+    to: {node: /original, port: in, direction: input}
 )");
 
   const auto graph = filter_component_factory::pipeline::loadPipelineGraph(path);
@@ -265,7 +354,7 @@ edges:
 TEST(PipelineGraph, RejectsDuplicateTopicNodes)
 {
   const auto path = writeTempPipeline(R"(
-version: 1
+version: 2
 nodes:
   - type: topic
     topic: /duplicate

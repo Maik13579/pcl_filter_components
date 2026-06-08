@@ -120,10 +120,10 @@ nodes:
     name: /output
     topic_type: ExampleType
 edges:
-  - from: {node: /input, port: out}
-    to: {node: ExampleFilter_1, port: input}
-  - from: {node: ExampleFilter_1, port: output}
-    to: {node: /output, port: in}
+  - from: {node: /input, port: out, direction: output}
+    to: {node: ExampleFilter_1, port: input, direction: input}
+  - from: {node: ExampleFilter_1, port: output, direction: output}
+    to: {node: /output, port: in, direction: input}
 ```
 
 When the factory reads a graph, it loads filter nodes as components and applies
