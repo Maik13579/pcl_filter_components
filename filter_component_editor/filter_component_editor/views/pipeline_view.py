@@ -44,12 +44,12 @@ class PipelineView(QGraphicsView):
             self.setCursor(Qt.ClosedHandCursor)
             event.accept()
             return
-        if event.button() == Qt.LeftButton and self.editor.begin_connection_drag(
-            self.itemAt(event.pos()),
-            self.mapToScene(event.pos()),
-            bool(event.modifiers() & Qt.ShiftModifier),
-        ):
-            return
+        if event.button() == Qt.LeftButton and not (event.modifiers() & Qt.ShiftModifier):
+            if self.editor.begin_connection_drag(
+                self.itemAt(event.pos()),
+                self.mapToScene(event.pos()),
+            ):
+                return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
