@@ -4,6 +4,8 @@
 import sys
 import types
 
+import pytest
+
 from filter_component_editor.pipeline_graph import Edge, Graph, Node, PortRef
 
 
@@ -89,6 +91,7 @@ def install_editor_dependency_stubs() -> None:
 install_qt_stubs()
 install_editor_dependency_stubs()
 
+import filter_component_editor.pipeline_editor as pipeline_editor_module
 from filter_component_editor.pipeline_editor import PipelineEditor, ROS_MESSAGE_COMPATIBILITY
 
 
@@ -151,12 +154,44 @@ def chain_editor_for(graph: Graph) -> PipelineEditor:
 
 
 class FakeNodeItem:
-    def __init__(self, node: Node) -> None:
+    def __init__(self, node: Node, _editor=None) -> None:
         self.node = node
         self.visible = True
+        self._pos = types.SimpleNamespace(x=lambda: 0.0, y=lambda: 0.0)
 
     def setVisible(self, visible: bool) -> None:
         self.visible = visible
+
+    def setPos(self, x: float, y: float) -> None:
+        self._pos = types.SimpleNamespace(x=lambda: x, y=lambda: y)
+
+    def pos(self):
+        return self._pos
+
+
+class FakeToggle:
+    def __init__(self) -> None:
+        self.checked = None
+        self.blocked = False
+
+    def blockSignals(self, blocked: bool) -> None:
+        self.blocked = blocked
+
+    def setChecked(self, checked: bool) -> None:
+        self.checked = checked
+
+
+class FakeScene:
+    def __init__(self) -> None:
+        self.items = []
+        self.cleared = False
+
+    def clear(self) -> None:
+        self.cleared = True
+        self.items.clear()
+
+    def addItem(self, item) -> None:
+        self.items.append(item)
 
 
 def topic(node_id: str, stream_type: str) -> Node:
@@ -390,6 +425,56 @@ def test_filter_chain_metadata_detects_chain_nodes() -> None:
     assert editor._is_filter_chain(filter_node("voxel")) is False
 
 
+def test_filter_chain_row_texts_include_configured_filters() -> None:
+    node = chain_node(
+        {
+            "filters.filter1.name": "voxel",
+            "filters.filter1.type": "pcl_filters/VoxelGridXYZI",
+            "filters.filter2.name": "pass",
+            "filters.filter2.type": "pcl_filters/PassThroughXYZI",
+        }
+    )
+    editor = chain_editor_for(Graph(nodes=[node]))
+    editor.show_filters = True
+
+    assert editor.filter_row_texts_for_node(node) == [
+        "chain",
+        "Type: RosFilterChainXYZI",
+        "Package: pcl_filter_components_filter_chain",
+        "Filters:",
+        "1. voxel (pcl_filters/VoxelGridXYZI)",
+        "2. pass (pcl_filters/PassThroughXYZI)",
+    ]
+
+
+def test_filter_chain_row_texts_show_empty_chain_stably() -> None:
+    node = chain_node()
+    editor = chain_editor_for(Graph(nodes=[node]))
+    editor.show_filters = True
+
+    assert editor.filter_row_texts_for_node(node)[-2:] == ["Filters:", "Filters: none"]
+
+
+def test_filter_row_texts_skip_chain_filters_for_normal_nodes() -> None:
+    node = filter_node("voxel")
+    editor = chain_editor_for(Graph(nodes=[node]))
+    editor.show_filters = True
+
+    assert editor.filter_row_texts_for_node(node) == [
+        "voxel",
+        "Type: VoxelGridXYZI",
+        "Package: pcl_filter_components_xyzi",
+    ]
+
+
+def test_filter_row_texts_respect_show_filters_toggle() -> None:
+    node = chain_node({"filters.filter1.name": "voxel", "filters.filter1.type": "pcl_filters/VoxelGridXYZI"})
+    editor = chain_editor_for(Graph(nodes=[node]))
+    editor.show_filters = False
+
+    assert "Filters:" not in editor.filter_row_texts_for_node(node)
+
+
 def test_compatible_chain_plugins_match_exact_filter_base_type() -> None:
     node = chain_node()
     editor = chain_editor_for(Graph(nodes=[node]))
@@ -397,6 +482,88 @@ def test_compatible_chain_plugins_match_exact_filter_base_type() -> None:
     plugins = editor._compatible_chain_plugins(node)
 
     assert [plugin.name for plugin in plugins] == ["pcl_filters/VoxelGridXYZI"]
+
+
+def test_sync_positions_writes_show_filters_to_editor_state() -> None:
+    node = chain_node()
+    item = FakeNodeItem(node)
+    item.setPos(12.0, 34.0)
+    editor = chain_editor_for(Graph(nodes=[node]))
+    editor.items_by_id = {node.id: item}
+    editor.top_down_mode = False
+    editor.show_topics = False
+    editor.show_filters = False
+
+    editor._sync_positions()
+
+    assert node.position == {"x": 12.0, "y": 34.0}
+    assert editor.graph.editor == {
+        "orientation": "left_right",
+        "show_topics": False,
+        "show_filters": False,
+    }
+
+
+def test_load_reads_show_filters_and_updates_toggle(monkeypatch: pytest.MonkeyPatch) -> None:
+    node = chain_node()
+    graph = Graph(editor={"orientation": "left_right", "show_topics": False, "show_filters": False}, nodes=[node])
+    editor = chain_editor_for(Graph())
+    editor.widget = object()
+    editor.scene = FakeScene()
+    editor.items_by_id = {}
+    editor.edge_items = []
+    editor.top_down_toggle = FakeToggle()
+    editor.topic_visibility_toggle = FakeToggle()
+    editor.filter_visibility_toggle = FakeToggle()
+    editor.expand_scene_for_item = lambda _item: None
+    editor.fit_graph_view = lambda: None
+    editor._sync_live_pipeline = lambda: None
+    editor._rebuild_edges = lambda: None
+    monkeypatch.setattr(
+        pipeline_editor_module,
+        "QFileDialog",
+        types.SimpleNamespace(getOpenFileName=lambda *_args: ("pipeline.yaml", "")),
+    )
+    monkeypatch.setattr(pipeline_editor_module, "load_graph", lambda _path: graph)
+    monkeypatch.setattr(pipeline_editor_module, "NodeItem", FakeNodeItem)
+
+    editor._load()
+
+    assert editor.top_down_mode is False
+    assert editor.show_topics is False
+    assert editor.show_filters is False
+    assert editor.top_down_toggle.checked is False
+    assert editor.topic_visibility_toggle.checked is False
+    assert editor.filter_visibility_toggle.checked is False
+    assert editor.items_by_id == {"chain": editor.scene.items[0]}
+
+
+def test_load_defaults_missing_show_filters_to_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    graph = Graph(editor={}, nodes=[chain_node()])
+    editor = chain_editor_for(Graph())
+    editor.widget = object()
+    editor.scene = FakeScene()
+    editor.items_by_id = {}
+    editor.edge_items = []
+    editor.top_down_toggle = FakeToggle()
+    editor.topic_visibility_toggle = FakeToggle()
+    editor.filter_visibility_toggle = FakeToggle()
+    editor.expand_scene_for_item = lambda _item: None
+    editor.fit_graph_view = lambda: None
+    editor._sync_live_pipeline = lambda: None
+    editor._rebuild_edges = lambda: None
+    monkeypatch.setattr(
+        pipeline_editor_module,
+        "QFileDialog",
+        types.SimpleNamespace(getOpenFileName=lambda *_args: ("pipeline.yaml", "")),
+    )
+    monkeypatch.setattr(pipeline_editor_module, "load_graph", lambda _path: graph)
+    monkeypatch.setattr(pipeline_editor_module, "NodeItem", FakeNodeItem)
+
+    editor._load()
+
+    assert editor.show_filters is True
+    assert editor.filter_visibility_toggle.checked is True
 
 
 def test_chain_parameter_rewrite_compacts_indices_and_removes_stale_entries() -> None:

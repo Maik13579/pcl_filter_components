@@ -18,7 +18,7 @@ def input_(node: str, port: str = "") -> PortRef:
 
 def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
     graph = Graph(
-        editor={"orientation": "top_down"},
+        editor={"orientation": "top_down", "show_filters": False},
         nodes=[
             Node(
                 id="/points",
@@ -86,7 +86,7 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
     assert loaded.nodes[1].sync["mode"] == "receipt_time"
     assert loaded.nodes[1].sync["max_interval"] == 0.1
     assert loaded.nodes[0].position == {"x": 10.0, "y": 20.0}
-    assert loaded.editor == {"orientation": "top_down"}
+    assert loaded.editor == {"orientation": "top_down", "show_filters": False}
     assert loaded.nodes[2].topic == "/pcl_pipeline/voxel_to_output"
     assert loaded.nodes[2].qos == {}
     assert loaded.nodes[2].position == {"x": 120.0, "y": 80.0}

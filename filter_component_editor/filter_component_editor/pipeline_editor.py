@@ -90,6 +90,7 @@ class PipelineEditor(Plugin):
         self.rewire_preview: QGraphicsLineItem | None = None
         self.top_down_mode = True
         self.show_topics = True
+        self.show_filters = True
 
         self.widget = QWidget()
         layout = QHBoxLayout(self.widget)
@@ -125,8 +126,11 @@ class PipelineEditor(Plugin):
         self.top_down_toggle.setChecked(self.top_down_mode)
         self.topic_visibility_toggle = QCheckBox("Show topics")
         self.topic_visibility_toggle.setChecked(self.show_topics)
+        self.filter_visibility_toggle = QCheckBox("Show Filters")
+        self.filter_visibility_toggle.setChecked(self.show_filters)
         view_option_row.addWidget(self.top_down_toggle)
         view_option_row.addWidget(self.topic_visibility_toggle)
+        view_option_row.addWidget(self.filter_visibility_toggle)
         side.addLayout(view_option_row)
 
         zoom_row = QHBoxLayout()
@@ -161,6 +165,7 @@ class PipelineEditor(Plugin):
 
         self.top_down_toggle.toggled.connect(self._set_top_down_mode)
         self.topic_visibility_toggle.toggled.connect(self._set_topic_visibility)
+        self.filter_visibility_toggle.toggled.connect(self._set_filter_visibility)
         zoom_out.clicked.connect(lambda: self.zoom_canvas(1.0 / 1.2))
         zoom_in.clicked.connect(lambda: self.zoom_canvas(1.2))
         zoom_reset.clicked.connect(self.reset_zoom)
@@ -217,8 +222,6 @@ class PipelineEditor(Plugin):
         highlight = self.theme_color("highlight")
         if node_type == "topic":
             return highlight.lighter(112) if highlight.lightness() < 128 else highlight.darker(112)
-        if node is not None and self._is_filter_chain(node):
-            return QColor("#2f6f6f")
         return base
 
     def selected_node_fill(self, node_type: str, node: Node | None = None) -> QColor:
@@ -287,6 +290,14 @@ class PipelineEditor(Plugin):
         self.show_topics = enabled
         self._refresh_topic_visibility()
         self._rebuild_edges()
+
+    def _set_filter_visibility(self, enabled: bool) -> None:
+        self.show_filters = enabled
+        for item in list(self.items_by_id.values()):
+            if self._is_filter_chain(item.node):
+                self._redraw_node(item)
+        self._refresh_port_visibility()
+        self.refresh_edges()
 
     def _choose_stream_type(self, title: str) -> str:
         types = [item.point_type for item in self.discovery.types if item.point_type]
@@ -631,6 +642,28 @@ class PipelineEditor(Plugin):
             for _index, entry in sorted(entries_by_index.items())
             if entry.get("name") or entry.get("type") or entry.get("params")
         ]
+
+    def filter_row_texts_for_node(self, node: Node) -> list[str]:
+        rows = [
+            node.name or node.id or "unknown",
+            f"Type: {node.filter or 'filter'}",
+            f"Package: {node.package or 'unknown'}",
+        ]
+        if not self.show_filters or not self._is_filter_chain(node):
+            return rows
+        rows.append("Filters:")
+        entries = self._chain_entries(node)
+        if not entries:
+            rows.append("Filters: none")
+            return rows
+        for index, entry in enumerate(entries, start=1):
+            name = str(entry.get("name", "")).strip()
+            plugin_type = str(entry.get("type", "")).strip()
+            label = name or plugin_type or "unnamed"
+            if plugin_type:
+                label = f"{label} ({plugin_type})"
+            rows.append(f"{index}. {label}")
+        return rows
 
     def _unique_chain_filter_name(self, plugin_name: str, entries: list[dict[str, object]]) -> str:
         base = plugin_name.rsplit("/", 1)[-1].rsplit("::", 1)[-1] or "filter"
@@ -2432,6 +2465,7 @@ class PipelineEditor(Plugin):
         self.graph.editor = {
             "orientation": "top_down" if self.top_down_mode else "left_right",
             "show_topics": self.show_topics,
+            "show_filters": self.show_filters,
         }
 
     def _refresh_live_filter_parameters_for_save(self) -> None:
@@ -2478,12 +2512,16 @@ class PipelineEditor(Plugin):
         orientation = self.graph.editor.get("orientation", "top_down")
         self.top_down_mode = orientation == "top_down"
         self.show_topics = bool(self.graph.editor.get("show_topics", True))
+        self.show_filters = bool(self.graph.editor.get("show_filters", True))
         self.top_down_toggle.blockSignals(True)
         self.top_down_toggle.setChecked(self.top_down_mode)
         self.top_down_toggle.blockSignals(False)
         self.topic_visibility_toggle.blockSignals(True)
         self.topic_visibility_toggle.setChecked(self.show_topics)
         self.topic_visibility_toggle.blockSignals(False)
+        self.filter_visibility_toggle.blockSignals(True)
+        self.filter_visibility_toggle.setChecked(self.show_filters)
+        self.filter_visibility_toggle.blockSignals(False)
         self.items_by_id.clear()
         self.edge_items.clear()
         self.scene.clear()

@@ -16,6 +16,8 @@ from filter_component_editor.pipeline_graph import Node
 
 class NodeItem(QGraphicsRectItem):
     def __init__(self, node: Node, editor: "PipelineEditor") -> None:
+        self.node = node
+        self.editor = editor
         title_text = node.topic if node.type == "topic" else node.name or node.id
         subtitle_text = self._topic_subtitle_text(node)
         title_font = editor.widget.font()
@@ -32,10 +34,8 @@ class NodeItem(QGraphicsRectItem):
                 *(metrics.horizontalAdvance(text) for text in row_texts[1:]),
             ]
             width = max(210, max(row_widths) + 24)
-            height = 78
+            height = max(78, 18 + len(row_texts) * 21)
         super().__init__(0, 0, width, height)
-        self.node = node
-        self.editor = editor
         self.setFlag(QGraphicsItem.ItemIsMovable)
         self.setFlag(QGraphicsItem.ItemIsSelectable)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
@@ -210,6 +210,8 @@ class NodeItem(QGraphicsRectItem):
         return node.output_type or node.input_type or "topic"
 
     def _filter_row_texts_for_node(self, node: Node) -> list[str]:
+        if hasattr(self.editor, "filter_row_texts_for_node"):
+            return self.editor.filter_row_texts_for_node(node)
         return [
             node.name or node.id or "unknown",
             f"Type: {node.filter or 'filter'}",
