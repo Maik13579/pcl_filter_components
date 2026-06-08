@@ -1271,29 +1271,48 @@ class PipelineEditor(Plugin):
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         self._set_dialog_default_size(dialog)
-        if dialog.exec_() == QDialog.Accepted:
+        while dialog.exec_() == QDialog.Accepted:
             if node.type == "filter" and name_edit is not None:
+                try:
+                    parameters = {
+                        key: self._parameter_widget_value(key, widget, node.parameters[key])
+                        for key, widget in parameter_widgets.items()
+                    }
+                    sync = {}
+                    if sync_widgets:
+                        sync = {
+                            "policy": self._qos_widget_text(sync_widgets["policy"]),
+                            "queue_size": self._parse_typed_scalar(
+                                self._qos_widget_text(sync_widgets["queue_size"]),
+                                10,
+                                "Queue size",
+                            ),
+                            "slop": self._parse_typed_scalar(
+                                self._qos_widget_text(sync_widgets["slop"]),
+                                0.05,
+                                "Slop seconds",
+                            ),
+                        }
+                    inputs = self._collect_port_qos(node.inputs, input_qos_widgets)
+                    outputs = self._collect_port_qos(node.outputs, output_qos_widgets)
+                except ValueError as error:
+                    QMessageBox.critical(self.widget, "Invalid Value", str(error))
+                    continue
                 if not self._rename_node(node, name_edit.text().strip()):
                     return
                 node.name = node.id
-                node.parameters = {
-                    key: self._parameter_widget_value(widget, node.parameters[key])
-                    for key, widget in parameter_widgets.items()
-                }
+                node.parameters = parameters
                 if sync_widgets:
-                    node.sync = {
-                        "policy": self._qos_widget_text(sync_widgets["policy"]),
-                        "queue_size": self._parse_typed_scalar(self._qos_widget_text(sync_widgets["queue_size"]), 10),
-                        "slop": self._parse_typed_scalar(self._qos_widget_text(sync_widgets["slop"]), 0.05),
-                    }
-                node.inputs = self._collect_port_qos(node.inputs, input_qos_widgets)
-                node.outputs = self._collect_port_qos(node.outputs, output_qos_widgets)
+                    node.sync = sync
+                node.inputs = inputs
+                node.outputs = outputs
             elif topic_edit is not None:
                 if not self._rename_node(node, topic_edit.text().strip()):
                     return
                 node.topic = node.id
             self._redraw_node(item)
             self._sync_live_pipeline()
+            return
 
     def _readonly_field(self, text: str) -> QLineEdit:
         field = QLineEdit(text, self.widget)
@@ -1451,7 +1470,7 @@ class PipelineEditor(Plugin):
                 "qos": {
                     "reliability": self._qos_widget_text(port_widgets["reliability"]),
                     "history": self._qos_widget_text(port_widgets["history"]),
-                    "depth": self._parse_typed_scalar(self._qos_widget_text(port_widgets["depth"]), 5),
+                    "depth": self._parse_typed_scalar(self._qos_widget_text(port_widgets["depth"]), 5, f"{port} depth"),
                     "durability": self._qos_widget_text(port_widgets["durability"]),
                 }
             }
@@ -1496,23 +1515,27 @@ class PipelineEditor(Plugin):
                 edge.target.node = new_id
         return True
 
-    def _parameter_widget_value(self, widget: QLineEdit | QCheckBox, current):
+    def _parameter_widget_value(self, name: str, widget: QLineEdit | QCheckBox, current):
         if isinstance(widget, QCheckBox):
             return widget.isChecked()
-        return self._parse_typed_scalar(widget.text(), current)
+        return self._parse_typed_scalar(widget.text(), current, name)
 
     def _qos_widget_text(self, widget: QLineEdit | QComboBox) -> str:
         if isinstance(widget, QComboBox):
             return widget.currentText()
         return widget.text()
 
-    def _parse_typed_scalar(self, text: str, current):
+    def _parse_typed_scalar(self, text: str, current, name: str = "Value"):
         if isinstance(current, bool):
             return text.strip().lower() in {"1", "true", "yes", "on"}
-        if isinstance(current, int) and not isinstance(current, bool):
-            return int(text)
-        if isinstance(current, float):
-            return float(text)
+        try:
+            if isinstance(current, int) and not isinstance(current, bool):
+                return int(text)
+            if isinstance(current, float):
+                return float(text)
+        except ValueError as error:
+            expected = "integer" if isinstance(current, int) and not isinstance(current, bool) else "float"
+            raise ValueError(f"{name} must be a valid {expected}.") from error
         return self._parse_scalar(text)
 
     def _parse_scalar(self, text: str):
