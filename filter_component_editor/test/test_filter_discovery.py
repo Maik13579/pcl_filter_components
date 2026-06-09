@@ -5,6 +5,8 @@ from pathlib import Path
 
 from filter_component_editor.filter_discovery import (
     FilterExport,
+    TypeExport,
+    _deduplicated_type_exports,
     discover_filters,
     discover_filter_plugins,
     load_filter_plugin_defaults,
@@ -121,3 +123,28 @@ def test_pointcloud2_numpy_type_is_discoverable_when_installed() -> None:
     export = types["PointCloud2"]
     assert export.message_type == "sensor_msgs/msg/PointCloud2"
     assert export.type_adapter == "filter_component_base_py.adapters.PointCloud2NumpyAdapter"
+
+
+def test_type_discovery_prefers_export_with_adapter_metadata() -> None:
+    types = _deduplicated_type_exports([
+        TypeExport(
+            package="example",
+            point_type="PointCloud2",
+            message_type="sensor_msgs/msg/PointCloud2",
+        ),
+        TypeExport(
+            package="base",
+            point_type="PointCloud2",
+            type_adapter="filter_component_base_py.adapters.PointCloud2NumpyAdapter",
+            message_type="sensor_msgs/msg/PointCloud2",
+        ),
+    ])
+
+    assert types == [
+        TypeExport(
+            package="base",
+            point_type="PointCloud2",
+            type_adapter="filter_component_base_py.adapters.PointCloud2NumpyAdapter",
+            message_type="sensor_msgs/msg/PointCloud2",
+        )
+    ]

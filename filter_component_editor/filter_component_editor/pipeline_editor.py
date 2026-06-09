@@ -230,10 +230,12 @@ class PipelineEditor(Plugin):
         if node_type == "topic":
             return highlight.lighter(112) if highlight.lightness() < 128 else highlight.darker(112)
         if node is not None and node.implementation == "python":
-            return QColor("#d7f2e3")
+            return self._python_node_fill(selected=False)
         return base
 
     def selected_node_fill(self, node_type: str, node: Node | None = None) -> QColor:
+        if node is not None and node.implementation == "python":
+            return self._python_node_fill(selected=True)
         fill = self.node_fill(node_type, node)
         highlight = self.accent_color("selected")
         return QColor(
@@ -241,6 +243,12 @@ class PipelineEditor(Plugin):
             (fill.green() * 2 + highlight.green()) // 3,
             (fill.blue() * 2 + highlight.blue()) // 3,
         )
+
+    def _python_node_fill(self, selected: bool) -> QColor:
+        text_is_light = self.theme_color("text").lightness() >= 128
+        if text_is_light:
+            return QColor("#31583f" if selected else "#264634")
+        return QColor("#bfe8cf" if selected else "#d7f2e3")
 
     def zoom_canvas(self, factor: float) -> None:
         current = self.view.transform().m11()

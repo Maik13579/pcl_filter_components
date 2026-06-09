@@ -145,7 +145,26 @@ def discover_filters() -> DiscoveryResult:
                     chain_data_type=chain_data_type,
                 )
             )
+    result.types = _deduplicated_type_exports(result.types)
     return result
+
+
+def _deduplicated_type_exports(types: list[TypeExport]) -> list[TypeExport]:
+    by_point_type: dict[str, TypeExport] = {}
+    order: list[str] = []
+    for export in types:
+        current = by_point_type.get(export.point_type)
+        if current is None:
+            by_point_type[export.point_type] = export
+            order.append(export.point_type)
+            continue
+        if _type_export_score(export) > _type_export_score(current):
+            by_point_type[export.point_type] = export
+    return [by_point_type[point_type] for point_type in order]
+
+
+def _type_export_score(export: TypeExport) -> int:
+    return int(bool(export.type_adapter)) + int(bool(export.message_type))
 
 
 def load_filter_plugin_defaults(defaults_yaml: Path) -> dict[str, dict[str, object]]:
