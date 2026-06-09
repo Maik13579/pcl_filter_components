@@ -344,6 +344,36 @@ def test_connection_verdict_returns_invalid_for_same_node() -> None:
     assert "itself" in verdict.reason
 
 
+def test_connection_verdict_rejects_subscribe_to_published_topic() -> None:
+    topic_node = topic("/points", "PointXYZI")
+    target = filter_node("voxel")
+    graph = Graph(
+        nodes=[topic_node, target],
+        edges=[Edge(output("voxel", "out"), input_("/points", "in"))],
+    )
+    editor = editor_for(graph)
+
+    verdict = editor._connection_verdict(topic_node, "out", target, "in")
+
+    assert verdict.verdict == "invalid"
+    assert "cannot publish and subscribe" in verdict.reason
+
+
+def test_connection_verdict_rejects_publish_to_subscribed_topic() -> None:
+    topic_node = topic("/points", "PointXYZI")
+    source = filter_node("voxel")
+    graph = Graph(
+        nodes=[topic_node, source],
+        edges=[Edge(output("/points", "out"), input_("voxel", "in"))],
+    )
+    editor = editor_for(graph)
+
+    verdict = editor._connection_verdict(source, "out", topic_node, "in")
+
+    assert verdict.verdict == "invalid"
+    assert "cannot publish and subscribe" in verdict.reason
+
+
 def test_refresh_topic_visibility_hides_only_topic_items() -> None:
     source = filter_node("source")
     topic_node = topic("/between", "PointXYZI")

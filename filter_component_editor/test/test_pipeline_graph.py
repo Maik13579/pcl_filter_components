@@ -508,6 +508,30 @@ def test_graph_accepts_explicit_repeated_output_ports() -> None:
     graph.validate()
 
 
+def test_graph_rejects_filter_publishing_and_subscribing_same_topic() -> None:
+    graph = Graph(
+        nodes=[
+            Node(
+                id="VoxelGridXYZI_1",
+                name="VoxelGridXYZI_1",
+                type="filter",
+                package="pcl_filter_components_xyzi",
+                filter="VoxelGridXYZI",
+                input_type="PointXYZI",
+                output_type="PointXYZI",
+            ),
+            Node(id="/points", type="topic", topic="/points", input_type="PointXYZI", output_type="PointXYZI"),
+        ],
+        edges=[
+            Edge(output("/points", "out"), input_("VoxelGridXYZI_1", "in")),
+            Edge(output("VoxelGridXYZI_1", "out"), input_("/points", "in")),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="cannot both publish and subscribe"):
+        graph.validate()
+
+
 def test_graph_rejects_duplicate_topic_nodes() -> None:
     graph = Graph(
         nodes=[

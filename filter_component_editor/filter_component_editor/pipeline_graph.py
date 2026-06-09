@@ -176,6 +176,22 @@ class Graph:
                 if key in used_inputs:
                     raise ValueError(f"filter input {target_node.id}:{key[1]} is already connected")
                 used_inputs.add(key)
+        published_topics_by_filter: dict[str, set[str]] = {}
+        subscribed_topics_by_filter: dict[str, set[str]] = {}
+        for edge in self.edges:
+            source_node = nodes_by_id[edge.source.node]
+            target_node = nodes_by_id[edge.target.node]
+            if source_node.type == "filter" and target_node.type == "topic":
+                topic = target_node.topic or target_node.id
+                published_topics_by_filter.setdefault(source_node.id, set()).add(topic)
+            elif source_node.type == "topic" and target_node.type == "filter":
+                topic = source_node.topic or source_node.id
+                subscribed_topics_by_filter.setdefault(target_node.id, set()).add(topic)
+        for filter_id, published_topics in published_topics_by_filter.items():
+            repeated_topics = published_topics & subscribed_topics_by_filter.get(filter_id, set())
+            if repeated_topics:
+                topic = sorted(repeated_topics)[0]
+                raise ValueError(f"filter {filter_id} cannot both publish and subscribe to topic {topic}")
         topic_names = [node.topic for node in self.nodes if node.type == "topic" and node.topic]
         if len(topic_names) != len(set(topic_names)):
             raise ValueError("topic names must be unique")

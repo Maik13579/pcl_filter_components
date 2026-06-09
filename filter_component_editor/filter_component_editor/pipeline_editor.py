@@ -837,6 +837,38 @@ class PipelineEditor(Plugin):
                 occupied.add(self._canonical_output_port(node, edge.source.port))
         return occupied
 
+    def _topic_node_ids_for_topic(self, topic_node: Node) -> set[str]:
+        topic = topic_node.topic or topic_node.id
+        return {
+            node.id
+            for node in self.graph.nodes
+            if node.type == "topic" and (node.topic or node.id) == topic
+        }
+
+    def _filter_topic_direction_conflict(
+        self,
+        filter_node: Node,
+        topic_node: Node,
+        connecting_filter_output: bool,
+        edge_to_ignore: Edge | None = None,
+    ) -> bool:
+        topic_node_ids = self._topic_node_ids_for_topic(topic_node)
+        for edge in self.graph.edges:
+            if edge is edge_to_ignore:
+                continue
+            if connecting_filter_output:
+                if edge.source.node in topic_node_ids and edge.target.node == filter_node.id:
+                    return True
+            elif edge.source.node == filter_node.id and edge.target.node in topic_node_ids:
+                return True
+        return False
+
+    def _filter_topic_direction_conflict_reason(self, filter_node: Node, topic_node: Node) -> str:
+        return (
+            f"{filter_node.id} already uses {topic_node.topic or topic_node.id}; "
+            "a filter cannot publish and subscribe to the same topic."
+        )
+
     def available_input_ports(self, node: Node) -> list[tuple[str, str, str]]:
         if node.type != "filter":
             return []
@@ -878,6 +910,24 @@ class PipelineEditor(Plugin):
             return ConnectionVerdict(
                 "unavailable",
                 f"{target.id} input {canonical_target_port} is already connected.",
+                canonical_source_port,
+                canonical_target_port,
+            )
+        if source.type == "filter" and target.type == "topic" and self._filter_topic_direction_conflict(
+            source, target, True
+        ):
+            return ConnectionVerdict(
+                "invalid",
+                self._filter_topic_direction_conflict_reason(source, target),
+                canonical_source_port,
+                canonical_target_port,
+            )
+        if source.type == "topic" and target.type == "filter" and self._filter_topic_direction_conflict(
+            target, source, False
+        ):
+            return ConnectionVerdict(
+                "invalid",
+                self._filter_topic_direction_conflict_reason(target, source),
                 canonical_source_port,
                 canonical_target_port,
             )
@@ -1137,6 +1187,10 @@ class PipelineEditor(Plugin):
             return
         source_port = self._canonical_output_port(source.node, source_port) if source.node.type == "filter" else source_port
         target_port = self._canonical_input_port(target.node, target_port) if target.node.type == "filter" else target_port
+        verdict = self._connection_verdict(source.node, source_port, target.node, target_port)
+        if verdict.verdict not in {"exact", ROS_MESSAGE_COMPATIBILITY}:
+            self._show_action_error("Connect", verdict.reason or "No compatible free input is available.")
+            return
         for edge in self.graph.edges:
             if (
                 edge.source.node == source.node.id
@@ -1386,6 +1440,12 @@ class PipelineEditor(Plugin):
             if compatibility == "invalid":
                 self._show_action_error("Type Mismatch", f"{topic_item.node.id} is {actual}, expected {expected}.")
                 return True
+            if self._filter_topic_direction_conflict(target.node, topic_item.node, False, edge_item.edge):
+                self._show_action_error(
+                    "Topic Direction Conflict",
+                    self._filter_topic_direction_conflict_reason(target.node, topic_item.node),
+                )
+                return True
             edge_item.edge.source.node = topic_item.node.id
         else:
             expected = self._edge_type(source.node, True, edge_item.edge.source.port)
@@ -1393,6 +1453,12 @@ class PipelineEditor(Plugin):
             compatibility = self._connection_compatibility(expected, actual)
             if compatibility == "invalid":
                 self._show_action_error("Type Mismatch", f"{topic_item.node.id} is {actual}, expected {expected}.")
+                return True
+            if self._filter_topic_direction_conflict(source.node, topic_item.node, True, edge_item.edge):
+                self._show_action_error(
+                    "Topic Direction Conflict",
+                    self._filter_topic_direction_conflict_reason(source.node, topic_item.node),
+                )
                 return True
             edge_item.edge.target.node = topic_item.node.id
         edge_item.edge.compatibility = ROS_MESSAGE_COMPATIBILITY if compatibility == ROS_MESSAGE_COMPATIBILITY else ""
