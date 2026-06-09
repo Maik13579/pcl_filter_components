@@ -2174,47 +2174,7 @@ class PipelineEditor(Plugin):
             else:
                 tree.addTopLevelItem(QTreeWidgetItem(["No editable parameters.", ""]))
 
-        def selected_parameter_name() -> str:
-            item = tree.currentItem()
-            if item is None:
-                return ""
-            parts = [item.text(0)]
-            parent = item.parent()
-            while parent is not None:
-                parts.append(parent.text(0))
-                parent = parent.parent()
-            parts.reverse()
-            name = ".".join(part for part in parts if part)
-            return name if name in scoped_parameters else ""
-
-        def add_parameter() -> None:
-            name, accepted = QInputDialog.getText(dialog, "Add Parameter", "Parameter name")
-            name = name.strip() if accepted else ""
-            if not name:
-                return
-            if name in scoped_parameters:
-                QMessageBox.warning(dialog, "Duplicate Parameter", f"Parameter {name} already exists.")
-                return
-            scoped_parameters[name] = ""
-            rebuild_tree()
-
-        def remove_parameter() -> None:
-            name = selected_parameter_name()
-            if not name:
-                return
-            scoped_parameters.pop(name, None)
-            node.parameters.pop(f"{parameter_prefix}{name}", None)
-            rebuild_tree()
-
         rebuild_tree()
-        controls = QHBoxLayout()
-        add_button = QPushButton("Add Parameter", dialog)
-        remove_button = QPushButton("Remove Selected", dialog)
-        add_button.clicked.connect(add_parameter)
-        remove_button.clicked.connect(remove_parameter)
-        controls.addWidget(add_button)
-        controls.addWidget(remove_button)
-        layout.addLayout(controls)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
