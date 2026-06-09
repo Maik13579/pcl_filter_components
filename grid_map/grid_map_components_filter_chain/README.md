@@ -18,7 +18,7 @@ input_ports: map:GridMap
 output_ports: map:GridMap
 ```
 
-Chain parameters use the fixed `filters` prefix:
+Example chain parameters:
 
 ```yaml
 filters:

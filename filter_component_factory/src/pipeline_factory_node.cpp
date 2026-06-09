@@ -63,28 +63,11 @@ std::string packageFromComponentClass(const std::string & component_class)
   return component_class.substr(0, delimiter);
 }
 
-std::string normalizedInputPort(const std::string & port)
-{
-  if (port == "in" || port.empty()) {
-    return "cloud";
-  }
-  return port;
-}
-
-std::string normalizedOutputPort(const std::string & port)
-{
-  if (port == "out" || port.empty()) {
-    return "cloud";
-  }
-  return port;
-}
-
 size_t inputIndexForPort(const std::string & port, size_t fallback)
 {
-  const auto normalized = normalizedInputPort(port);
-  if (normalized.rfind("input_", 0) == 0) {
+  if (port.rfind("input_", 0) == 0) {
     try {
-      const auto value = std::stoul(normalized.substr(6));
+      const auto value = std::stoul(port.substr(6));
       if (value > 0U) {
         return value - 1U;
       }
@@ -96,12 +79,12 @@ size_t inputIndexForPort(const std::string & port, size_t fallback)
 
 std::string inputParameterName(const std::string & port)
 {
-  return "inputs." + normalizedInputPort(port) + ".topic";
+  return "inputs." + port + ".topic";
 }
 
 std::string outputParameterName(const std::string & port)
 {
-  return "outputs." + normalizedOutputPort(port) + ".topic";
+  return "outputs." + port + ".topic";
 }
 
 void appendPortQosParameters(
@@ -110,9 +93,8 @@ void appendPortQosParameters(
   const std::map<std::string, std::map<std::string, std::string>> & ports)
 {
   for (const auto & [port, qos] : ports) {
-    const auto normalized_port = direction == "inputs" ? normalizedInputPort(port) : normalizedOutputPort(port);
     for (const auto & [name, value] : qos) {
-      parameters.push_back(parameterFromString(direction + "." + normalized_port + ".qos." + name, value));
+      parameters.push_back(parameterFromString(direction + "." + port + ".qos." + name, value));
     }
   }
 }
@@ -122,7 +104,7 @@ void appendPortQosParameters(
 PipelineFactoryNode::PipelineFactoryNode(
   std::weak_ptr<rclcpp::Executor> executor,
   const rclcpp::NodeOptions & options)
-: rclcpp_lifecycle::LifecycleNode("pcl_pipeline_factory", options),
+: rclcpp_lifecycle::LifecycleNode("filter_pipeline_factory", options),
   executor_(std::move(executor))
 {
   this->declare_parameter<std::string>("pipeline_file", "");
@@ -133,7 +115,7 @@ PipelineFactoryNode::PipelineFactoryNode(
   manager_options.start_parameter_event_publisher(false);
   component_manager_ = std::make_shared<rclcpp_components::ComponentManager>(
     executor_,
-    "pcl_pipeline_component_manager",
+    "filter_pipeline_component_manager",
     manager_options);
 }
 
@@ -310,7 +292,7 @@ std::vector<std::pair<std::string, std::string>> PipelineFactoryNode::inputTopic
     if (topics.size() <= index) {
       topics.resize(index + 1U);
     }
-    topics[index] = {normalizedInputPort(edge.to.port), topic};
+    topics[index] = {edge.to.port, topic};
   }
   return topics;
 }
@@ -328,10 +310,10 @@ std::vector<std::pair<std::string, std::string>> PipelineFactoryNode::outputTopi
       continue;
     }
     if (target->type == "topic") {
-      topics.push_back({normalizedOutputPort(edge.from.port), target->topic});
+      topics.push_back({edge.from.port, target->topic});
       continue;
     }
-    topics.push_back({normalizedOutputPort(edge.from.port), edge.topic});
+    topics.push_back({edge.from.port, edge.topic});
   }
   return topics;
 }

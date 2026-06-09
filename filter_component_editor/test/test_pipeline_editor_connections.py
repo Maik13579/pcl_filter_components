@@ -109,7 +109,7 @@ def editor_for(graph: Graph) -> PipelineEditor:
     editor.message_type_by_logical = {
         "PointXYZ": "sensor_msgs/msg/PointCloud2",
         "PointXYZI": "sensor_msgs/msg/PointCloud2",
-        "PointIndices": "pcl_msgs/msg/PointIndices",
+        "PointIndices": "test_msgs/msg/PointIndices",
         "GridMap": "grid_map_msgs/msg/GridMap",
     }
     return editor
@@ -120,31 +120,30 @@ def chain_editor_for(graph: Graph) -> PipelineEditor:
     editor.discovery = types.SimpleNamespace(
         filters=[
             types.SimpleNamespace(
-                package="pcl_filter_components_filter_chain",
+                package="filter_component_factory",
                 filter="RosFilterChainXYZI",
-                component_class="pcl_filter_components_filter_chain::RosFilterChainXYZIComponent",
+                component_class="test_filter_components::RosFilterChainXYZIComponent",
                 kind="filter_chain",
-                chain_data_type="pcl::PointCloud<pcl::PointXYZI>",
-                chain_param_prefix="filters",
+                chain_data_type="test_filters::CloudXYZI",
             ),
         ],
         filter_plugins=[
             types.SimpleNamespace(
-                name="pcl_filters/VoxelGridXYZI",
-                type="pcl_filters::VoxelGridXYZI",
-                base_class_type="filters::FilterBase<pcl::PointCloud<pcl::PointXYZI>>",
+                name="test_filters/VoxelGridXYZI",
+                type="test_filters::VoxelGridXYZI",
+                base_class_type="filters::FilterBase<test_filters::CloudXYZI>",
                 description="",
             ),
             types.SimpleNamespace(
-                name="pcl_filters/MultiChannelXYZI",
-                type="pcl_filters::MultiChannelXYZI",
-                base_class_type="filters::MultiChannelFilterBase<pcl::PointCloud<pcl::PointXYZI>>",
+                name="test_filters/MultiChannelXYZI",
+                type="test_filters::MultiChannelXYZI",
+                base_class_type="filters::MultiChannelFilterBase<test_filters::CloudXYZI>",
                 description="",
             ),
             types.SimpleNamespace(
-                name="pcl_filters/VoxelGridXYZ",
-                type="pcl_filters::VoxelGridXYZ",
-                base_class_type="filters::FilterBase<pcl::PointCloud<pcl::PointXYZ>>",
+                name="test_filters/VoxelGridXYZ",
+                type="test_filters::VoxelGridXYZ",
+                base_class_type="filters::FilterBase<test_filters::CloudXYZ>",
                 description="",
             ),
         ],
@@ -222,8 +221,9 @@ def filter_node(
         id=node_id,
         name=node_id,
         type="filter",
-        package="pcl_filter_components_xyzi",
+        package="filter_component_factory",
         filter="VoxelGridXYZI",
+        component_class="test_filter_components::VoxelGridXYZIComponent",
         input_type=input_type,
         output_type=output_type,
         input_ports=input_ports,
@@ -236,9 +236,9 @@ def chain_node(parameters: dict[str, object] | None = None) -> Node:
         id="chain",
         name="chain",
         type="filter",
-        package="pcl_filter_components_filter_chain",
+        package="filter_component_factory",
         filter="RosFilterChainXYZI",
-        component_class="pcl_filter_components_filter_chain::RosFilterChainXYZIComponent",
+        component_class="test_filter_components::RosFilterChainXYZIComponent",
         input_type="PointXYZI",
         output_type="PointXYZI",
         parameters=parameters or {},
@@ -269,7 +269,6 @@ def grid_map_chain_editor_for(graph: Graph) -> PipelineEditor:
                 component_class="grid_map_components_filter_chain::RosFilterChainGridMapComponent",
                 kind="filter_chain",
                 chain_data_type="grid_map::GridMap",
-                chain_param_prefix="filters",
             ),
         ],
         filter_plugins=[],
@@ -347,9 +346,9 @@ def test_connection_verdict_returns_invalid_for_same_node() -> None:
 def test_checkbox_search_matches_all_terms_case_insensitively() -> None:
     editor = editor_for(Graph())
 
-    assert editor._checkbox_matches_query("PointXYZI - pcl::PointCloud", "xyzi pcl")
+    assert editor._checkbox_matches_query("PointXYZI - test_filters::Cloud", "xyzi test")
     assert editor._checkbox_matches_query("grid_map_components", "GRID components")
-    assert not editor._checkbox_matches_query("PointXYZI - pcl::PointCloud", "xyzi grid")
+    assert not editor._checkbox_matches_query("PointXYZI - test_filters::Cloud", "xyzi grid")
 
 
 def test_connection_verdict_rejects_subscribe_to_published_topic() -> None:
@@ -471,8 +470,7 @@ def test_filter_chain_metadata_detects_chain_nodes() -> None:
     editor = chain_editor_for(Graph(nodes=[node]))
 
     assert editor._is_filter_chain(node) is True
-    assert editor._chain_param_prefix(node) == "filters"
-    assert editor._chain_data_type(node) == "pcl::PointCloud<pcl::PointXYZI>"
+    assert editor._chain_data_type(node) == "test_filters::CloudXYZI"
     assert editor._is_filter_chain(filter_node("voxel")) is False
 
 
@@ -480,9 +478,9 @@ def test_filter_chain_row_texts_include_configured_filters() -> None:
     node = chain_node(
         {
             "filters.filter1.name": "voxel",
-            "filters.filter1.type": "pcl_filters/VoxelGridXYZI",
+            "filters.filter1.type": "test_filters/VoxelGridXYZI",
             "filters.filter2.name": "pass",
-            "filters.filter2.type": "pcl_filters/PassThroughXYZI",
+            "filters.filter2.type": "test_filters/PassThroughXYZI",
         }
     )
     editor = chain_editor_for(Graph(nodes=[node]))
@@ -491,12 +489,12 @@ def test_filter_chain_row_texts_include_configured_filters() -> None:
     assert editor.filter_row_texts_for_node(node) == [
         "chain",
         "Type: RosFilterChainXYZI",
-        "Package: pcl_filter_components_filter_chain",
+        "Package: filter_component_factory",
         "Filters:",
         "1. voxel",
-        "   pcl_filters/VoxelGridXYZI",
+        "   test_filters/VoxelGridXYZI",
         "2. pass",
-        "   pcl_filters/PassThroughXYZI",
+        "   test_filters/PassThroughXYZI",
     ]
 
 
@@ -516,12 +514,12 @@ def test_filter_row_texts_skip_chain_filters_for_normal_nodes() -> None:
     assert editor.filter_row_texts_for_node(node) == [
         "voxel",
         "Type: VoxelGridXYZI",
-        "Package: pcl_filter_components_xyzi",
+        "Package: filter_component_factory",
     ]
 
 
 def test_filter_row_texts_respect_show_filters_toggle() -> None:
-    node = chain_node({"filters.filter1.name": "voxel", "filters.filter1.type": "pcl_filters/VoxelGridXYZI"})
+    node = chain_node({"filters.filter1.name": "voxel", "filters.filter1.type": "test_filters/VoxelGridXYZI"})
     editor = chain_editor_for(Graph(nodes=[node]))
     editor.show_filters = False
 
@@ -534,7 +532,7 @@ def test_compatible_chain_plugins_match_exact_filter_base_type() -> None:
 
     plugins = editor._compatible_chain_plugins(node)
 
-    assert [plugin.name for plugin in plugins] == ["pcl_filters/VoxelGridXYZI"]
+    assert [plugin.name for plugin in plugins] == ["test_filters/VoxelGridXYZI"]
 
 
 def test_sync_positions_writes_show_filters_to_editor_state() -> None:
@@ -725,7 +723,7 @@ def test_filter_chain_sanitize_preserves_dynamic_plugin_parameters() -> None:
     )
     editor = chain_editor_for(Graph(nodes=[node]))
     editor.parameter_defaults_by_component = {
-        "pcl_filter_components_filter_chain::RosFilterChainXYZIComponent": {"in_place": False}
+        "test_filter_components::RosFilterChainXYZIComponent": {"in_place": False}
     }
 
     editor._sanitize_filter_parameters(node)
@@ -748,7 +746,7 @@ def test_filter_chain_live_spec_reloads_on_parameter_change() -> None:
     )
     editor = chain_editor_for(Graph(nodes=[node]))
     editor.parameter_defaults_by_component = {
-        "pcl_filter_components_filter_chain::RosFilterChainXYZIComponent": {"in_place": False}
+        "test_filter_components::RosFilterChainXYZIComponent": {"in_place": False}
     }
 
     specs = editor._live_component_specs()

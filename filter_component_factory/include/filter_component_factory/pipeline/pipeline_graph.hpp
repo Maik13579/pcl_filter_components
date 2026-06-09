@@ -59,7 +59,6 @@ struct PipelineGraph
 
 PipelineGraph loadPipelineGraph(const std::string & path);
 void validatePipelineGraph(const PipelineGraph & graph);
-std::string defaultComponentClass(const std::string & package_name, const std::string & filter);
 
 }  // namespace filter_component_factory::pipeline
 

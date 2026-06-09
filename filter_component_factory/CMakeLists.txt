@@ -30,13 +30,13 @@ ament_target_dependencies(${PROJECT_NAME}_pipeline
   rclcpp_lifecycle
 )
 
-add_executable(pcl_pipeline_factory src/pipeline_factory_main.cpp)
-target_link_libraries(pcl_pipeline_factory ${PROJECT_NAME}_pipeline)
-ament_target_dependencies(pcl_pipeline_factory
+add_executable(filter_pipeline_factory src/pipeline_factory_main.cpp)
+target_link_libraries(filter_pipeline_factory ${PROJECT_NAME}_pipeline)
+ament_target_dependencies(filter_pipeline_factory
   rclcpp
 )
 
-install(TARGETS ${PROJECT_NAME}_pipeline pcl_pipeline_factory
+install(TARGETS ${PROJECT_NAME}_pipeline filter_pipeline_factory
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -47,6 +47,23 @@ install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  add_library(test_filter_components SHARED
+    test/test_filter_components.cpp
+  )
+  ament_target_dependencies(test_filter_components
+    rclcpp
+    rclcpp_components
+    rclcpp_lifecycle
+  )
+  rclcpp_components_register_nodes(test_filter_components
+    "filter_component_factory::CropBoxXYZIComponent"
+    "filter_component_factory::PointCloudMergerXYZIComponent"
+    "filter_component_factory::VoxelGridXYZIComponent"
+  )
+  install(TARGETS test_filter_components
+    LIBRARY DESTINATION lib
+  )
 
   ament_add_gtest(test_pipeline_graph test/test_pipeline_graph.cpp)
   target_include_directories(test_pipeline_graph PRIVATE
@@ -62,6 +79,7 @@ if(BUILD_TESTING)
     PROJECT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   )
   target_link_libraries(test_pipeline_factory ${PROJECT_NAME}_pipeline)
+  add_dependencies(test_pipeline_factory test_filter_components)
   ament_target_dependencies(test_pipeline_factory
     rclcpp
   )

@@ -43,6 +43,7 @@ from filter_component_editor.runtime import LivePipelineRuntime
 from filter_component_editor.views import PipelineView
 
 
+FILTER_CHAIN_PARAM_PREFIX = "filters"
 ROS_MESSAGE_COMPATIBILITY = "ros_message"
 ROS_MESSAGE_COMPATIBILITY_WARNING = (
     "Logical types differ. ROS message type matches, so this connection is allowed, "
@@ -590,9 +591,8 @@ class PipelineEditor(Plugin):
     def _metadata_has_chain_plugin_params(self, node: Node, parameters: dict[str, object]) -> bool:
         if not self._chain_entries(node):
             return True
-        prefix = self._chain_param_prefix(node)
         return any(
-            key.startswith(f"{prefix}.filter") and ".params." in key
+            key.startswith(f"{FILTER_CHAIN_PARAM_PREFIX}.filter") and ".params." in key
             for key in parameters
         )
 
@@ -616,12 +616,6 @@ class PipelineEditor(Plugin):
         export = self._filter_export_for_node(node)
         return export is not None and export.kind == "filter_chain"
 
-    def _chain_param_prefix(self, node: Node) -> str:
-        export = self._filter_export_for_node(node)
-        if export is not None and export.chain_param_prefix:
-            return export.chain_param_prefix
-        return "filters"
-
     def _chain_data_type(self, node: Node) -> str:
         export = self._filter_export_for_node(node)
         return export.chain_data_type if export is not None else ""
@@ -641,25 +635,23 @@ class PipelineEditor(Plugin):
     def _restore_filter_chain_parameters(self, node: Node, old_parameters: dict[str, object]) -> None:
         if not self._is_filter_chain(node):
             return
-        prefix = self._chain_param_prefix(node)
         for key, value in old_parameters.items():
-            if self._is_chain_parameter_key(key, prefix):
+            if self._is_chain_parameter_key(key):
                 node.parameters[key] = value
 
-    def _is_chain_parameter_key(self, key: str, prefix: str) -> bool:
-        if not key.startswith(f"{prefix}.filter"):
+    def _is_chain_parameter_key(self, key: str) -> bool:
+        if not key.startswith(f"{FILTER_CHAIN_PARAM_PREFIX}.filter"):
             return False
-        suffix = key[len(f"{prefix}.filter"):]
+        suffix = key[len(f"{FILTER_CHAIN_PARAM_PREFIX}.filter"):]
         index, dot, field = suffix.partition(".")
         return bool(dot and index.isdigit() and (field in {"name", "type"} or field.startswith("params.")))
 
     def _chain_entries(self, node: Node) -> list[dict[str, object]]:
-        prefix = self._chain_param_prefix(node)
         entries_by_index: dict[int, dict[str, object]] = {}
         for key, value in node.parameters.items():
-            if not key.startswith(f"{prefix}.filter"):
+            if not key.startswith(f"{FILTER_CHAIN_PARAM_PREFIX}.filter"):
                 continue
-            suffix = key[len(f"{prefix}.filter"):]
+            suffix = key[len(f"{FILTER_CHAIN_PARAM_PREFIX}.filter"):]
             index_text, dot, field = suffix.partition(".")
             if not dot or not index_text.isdigit():
                 continue
@@ -718,11 +710,10 @@ class PipelineEditor(Plugin):
         return {}
 
     def _rewrite_chain_parameters(self, node: Node, entries: list[dict[str, object]]) -> None:
-        prefix = self._chain_param_prefix(node)
         preserved = {
             key: value
             for key, value in node.parameters.items()
-            if not self._is_chain_parameter_key(key, prefix)
+            if not self._is_chain_parameter_key(key)
         }
         for index, entry in enumerate(entries, start=1):
             name = str(entry.get("name", "")).strip()
@@ -733,13 +724,13 @@ class PipelineEditor(Plugin):
                 plugin_type = name
             if not name and not plugin_type:
                 continue
-            preserved[f"{prefix}.filter{index}.name"] = name
-            preserved[f"{prefix}.filter{index}.type"] = plugin_type
+            preserved[f"{FILTER_CHAIN_PARAM_PREFIX}.filter{index}.name"] = name
+            preserved[f"{FILTER_CHAIN_PARAM_PREFIX}.filter{index}.type"] = plugin_type
             params = entry.get("params", {})
             if isinstance(params, dict):
                 for param_name, value in sorted(params.items()):
                     if param_name:
-                        preserved[f"{prefix}.filter{index}.params.{param_name}"] = value
+                        preserved[f"{FILTER_CHAIN_PARAM_PREFIX}.filter{index}.params.{param_name}"] = value
         node.parameters = preserved
 
     def _selected_node_items(self) -> list[NodeItem]:
@@ -2107,8 +2098,7 @@ class PipelineEditor(Plugin):
         if index < 0 or index >= len(entries):
             return False
         entry = entries[index]
-        prefix = self._chain_param_prefix(node)
-        parameter_prefix = f"{prefix}.filter{index + 1}.params."
+        parameter_prefix = f"{FILTER_CHAIN_PARAM_PREFIX}.filter{index + 1}.params."
         scoped_parameters = {
             key.removeprefix(parameter_prefix): value
             for key, value in node.parameters.items()
@@ -2520,11 +2510,10 @@ class PipelineEditor(Plugin):
         if not self._filter_has_multiple_inputs(node):
             node.sync = {}
         defaults = self._declared_filter_parameter_defaults(node)
-        prefix = self._chain_param_prefix(node) if self._is_filter_chain(node) else ""
         node.parameters = {
             key: value
             for key, value in node.parameters.items()
-            if key in defaults or (prefix and self._is_chain_parameter_key(key, prefix))
+            if key in defaults or (self._is_filter_chain(node) and self._is_chain_parameter_key(key))
         }
 
     def _migrate_legacy_sync_parameters(self, node: Node) -> None:

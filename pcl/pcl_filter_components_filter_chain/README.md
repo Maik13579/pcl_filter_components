@@ -20,7 +20,7 @@ input_ports: cloud:PointXYZI
 output_ports: cloud:PointXYZI
 ```
 
-Chain parameters use the fixed `filters` prefix:
+Example chain parameters:
 
 ```yaml
 filters:

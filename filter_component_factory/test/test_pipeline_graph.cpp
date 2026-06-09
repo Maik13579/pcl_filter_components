@@ -13,7 +13,7 @@ namespace
 
 std::string writeTempPipeline(const std::string & yaml)
 {
-  const auto path = std::string{"/tmp/pcl_filter_components_pipeline_test.yaml"};
+  const auto path = std::string{"/tmp/filter_components_pipeline_test.yaml"};
   std::ofstream stream{path};
   stream << yaml;
   return path;
@@ -31,8 +31,9 @@ nodes:
     position: {x: 1.0, y: 2.0}
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: VoxelGridXYZI
+    component_class: test_filter_components::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
     parameters:
@@ -51,7 +52,7 @@ nodes:
     input_type: PointXYZI
     output_type: PointXYZI
   - type: topic
-    topic: /pcl_pipeline/voxel_to_output
+    topic: /filter_pipeline/voxel_to_output
     input_type: PointXYZI
     output_type: PointXYZI
     qos:
@@ -62,15 +63,15 @@ edges:
   - from: {node: /points, port: out, direction: output}
     to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
   - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
-    to: {node: /pcl_pipeline/voxel_to_output, port: in, direction: input}
-  - from: {node: /pcl_pipeline/voxel_to_output, port: out, direction: output}
+    to: {node: /filter_pipeline/voxel_to_output, port: in, direction: input}
+  - from: {node: /filter_pipeline/voxel_to_output, port: out, direction: output}
     to: {node: /filtered, port: in, direction: input}
 )");
 
   const auto graph = filter_component_factory::pipeline::loadPipelineGraph(path);
 
   ASSERT_EQ(graph.nodes.size(), 4U);
-  EXPECT_EQ(graph.nodes[1].component_class, "pcl_filter_components_xyzi::VoxelGridXYZIComponent");
+  EXPECT_EQ(graph.nodes[1].component_class, "test_filter_components::VoxelGridXYZIComponent");
   EXPECT_EQ(graph.nodes[1].input_type, "PointXYZI");
   EXPECT_EQ(graph.nodes[1].output_type, "PointXYZI");
   EXPECT_EQ(graph.nodes[1].parameters.at("filter.leaf_size_x"), "0.1");
@@ -79,7 +80,7 @@ edges:
   EXPECT_EQ(graph.nodes[1].outputs.at("cloud").at("durability"), "transient_local");
   EXPECT_EQ(graph.nodes[1].sync.at("mode"), "receipt_time");
   EXPECT_EQ(graph.nodes[1].sync.at("max_interval"), "0.1");
-  EXPECT_EQ(graph.nodes[3].topic, "/pcl_pipeline/voxel_to_output");
+  EXPECT_EQ(graph.nodes[3].topic, "/filter_pipeline/voxel_to_output");
   EXPECT_TRUE(graph.nodes[3].qos.empty());
   EXPECT_DOUBLE_EQ(graph.nodes[3].x, 120.0);
   EXPECT_DOUBLE_EQ(graph.nodes[3].y, 80.0);
@@ -97,8 +98,9 @@ version: 2
 nodes:
   - type: filter
     name: PointCloudMergerXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: PointCloudMergerXYZI
+    component_class: test_filter_components::PointCloudMergerXYZIComponent
     input_type: PointXYZI,PointXYZI
     output_type: PointXYZI
     sync:
@@ -122,8 +124,9 @@ nodes:
     output_type: PointXYZI
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: VoxelGridXYZI
+    component_class: test_filter_components::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
@@ -147,8 +150,9 @@ nodes:
     output_type: PointXYZI
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: VoxelGridXYZI
+    component_class: test_filter_components::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
@@ -169,8 +173,9 @@ nodes:
     output_type: PointXYZI
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: VoxelGridXYZI
+    component_class: test_filter_components::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
@@ -207,8 +212,9 @@ nodes:
     output_type: PointIndices
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: VoxelGridXYZI
+    component_class: test_filter_components::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
 edges:
@@ -228,9 +234,11 @@ version: 2
 nodes:
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: VoxelGridXYZI
+    component_class: test_filter_components::VoxelGridXYZIComponent
     output_type: PointXYZI
+    output_ports: cloud:PointXYZI,orig_cloud:PointXYZI
   - type: topic
     topic: /original
     input_type: PointXYZI
@@ -244,6 +252,51 @@ edges:
 
   ASSERT_EQ(graph.edges.size(), 1U);
   EXPECT_EQ(graph.edges[0].from.port, "orig_cloud");
+}
+
+TEST(PipelineGraph, RejectsMissingFilterComponentClass)
+{
+  const auto path = writeTempPipeline(R"(
+version: 2
+nodes:
+  - type: filter
+    name: VoxelGridXYZI_1
+    package: filter_component_factory
+    filter: VoxelGridXYZI
+    input_type: PointXYZI
+    output_type: PointXYZI
+edges: []
+)");
+
+  EXPECT_THROW(
+    (void)filter_component_factory::pipeline::loadPipelineGraph(path),
+    std::runtime_error);
+}
+
+TEST(PipelineGraph, RejectsFilterSideLegacyPorts)
+{
+  const auto path = writeTempPipeline(R"(
+version: 2
+nodes:
+  - type: topic
+    topic: /points
+    input_type: PointXYZI
+    output_type: PointXYZI
+  - type: filter
+    name: VoxelGridXYZI_1
+    package: filter_component_factory
+    filter: VoxelGridXYZI
+    component_class: test_filter_components::VoxelGridXYZIComponent
+    input_ports: cloud:PointXYZI
+    output_ports: cloud:PointXYZI
+edges:
+  - from: {node: /points, port: out, direction: output}
+    to: {node: VoxelGridXYZI_1, port: in, direction: input}
+)");
+
+  EXPECT_THROW(
+    (void)filter_component_factory::pipeline::loadPipelineGraph(path),
+    std::runtime_error);
 }
 
 TEST(PipelineGraph, AcceptsRepeatedInputPorts)
@@ -261,8 +314,9 @@ nodes:
     output_type: PointXYZI
   - type: filter
     name: PointCloudMergerXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: PointCloudMergerXYZI
+    component_class: test_filter_components::PointCloudMergerXYZIComponent
     input_type: PointXYZI,PointXYZI
     output_type: PointXYZI
 edges:
@@ -294,8 +348,9 @@ nodes:
     output_type: PointXYZI
   - type: filter
     name: PointCloudMergerXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: PointCloudMergerXYZI
+    component_class: test_filter_components::PointCloudMergerXYZIComponent
     input_type: PointXYZI,PointXYZI
     output_type: PointXYZI
 edges:
@@ -317,8 +372,9 @@ version: 2
 nodes:
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: VoxelGridXYZI
+    component_class: test_filter_components::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
   - type: topic
@@ -348,8 +404,9 @@ version: 2
 nodes:
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: VoxelGridXYZI
+    component_class: test_filter_components::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI,PointXYZI
     output_ports: cloud:PointXYZI,orig_cloud:PointXYZI

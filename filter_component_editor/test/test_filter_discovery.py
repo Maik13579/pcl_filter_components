@@ -13,14 +13,13 @@ from filter_component_editor.filter_discovery import (
 
 def test_filter_export_defaults_to_normal_filter_kind() -> None:
     export = FilterExport(
-        package="demo_filters",
+        package="test_filters",
         filter="Passthrough",
-        component_class="demo_filters::PassthroughComponent",
+        component_class="test_filters::PassthroughComponent",
     )
 
     assert export.kind == "filter"
     assert export.chain_data_type == ""
-    assert export.chain_param_prefix == "filters"
 
 
 def test_parse_filter_plugin_xml_reads_filter_base_plugins(tmp_path: Path) -> None:

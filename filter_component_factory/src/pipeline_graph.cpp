@@ -151,7 +151,7 @@ std::string portNameForType(
   return name.empty() ? "out" : name;
 }
 
-std::string typeForPort(const std::string & value, const std::string & port, bool outgoing)
+std::string typeForTopicPort(const std::string & value, const std::string & port, bool outgoing)
 {
   const auto ports = splitPorts(value);
   if (ports.empty()) {
@@ -172,6 +172,34 @@ std::string typeForPort(const std::string & value, const std::string & port, boo
     }
   }
   return outgoing ? ports.front().second : std::string{};
+}
+
+std::string typeForFilterPort(const std::string & value, const std::string & port, bool outgoing)
+{
+  const auto ports = splitPorts(value);
+  if (ports.empty() || port.empty() || port == "in" || port == "out") {
+    return {};
+  }
+  for (size_t index = 0; index < ports.size(); ++index) {
+    const auto & port_name = ports[index].first;
+    const auto & stream_type = ports[index].second;
+    if (
+      port == stream_type ||
+      port == port_name ||
+      port == portNameForType(stream_type, index, ports.size(), outgoing))
+    {
+      return stream_type;
+    }
+  }
+  return {};
+}
+
+bool filterPortIsValid(const PipelineNode & node, const std::string & port, bool outgoing)
+{
+  const auto spec = outgoing ?
+    (node.output_ports.empty() ? node.output_type : node.output_ports) :
+    (node.input_ports.empty() ? node.input_type : node.input_ports);
+  return !typeForFilterPort(spec, port, outgoing).empty();
 }
 
 std::string canonicalPort(const std::string & value, const std::string & port, bool outgoing)
@@ -200,9 +228,9 @@ std::string canonicalPort(const std::string & value, const std::string & port, b
 std::string nodeTypeForEdge(const PipelineNode & node, bool outgoing, const std::string & port)
 {
   if (node.type == "topic") {
-    return typeForPort(node.output_type.empty() ? node.input_type : node.output_type, port, outgoing);
+    return typeForTopicPort(node.output_type.empty() ? node.input_type : node.output_type, port, outgoing);
   }
-  return typeForPort(
+  return typeForFilterPort(
     outgoing ?
     (node.output_ports.empty() ? node.output_type : node.output_ports) :
     (node.input_ports.empty() ? node.input_type : node.input_ports),
@@ -234,14 +262,6 @@ void validateSyncConfig(const PipelineNode & node)
 }
 
 }  // namespace
-
-std::string defaultComponentClass(const std::string & package_name, const std::string & filter)
-{
-  if (package_name.empty() || filter.empty()) {
-    return {};
-  }
-  return package_name + "::" + filter + "Component";
-}
 
 PipelineGraph loadPipelineGraph(const std::string & path)
 {
@@ -286,9 +306,6 @@ PipelineGraph loadPipelineGraph(const std::string & path)
     if (item["position"] && item["position"].IsMap()) {
       node.x = item["position"]["x"] ? item["position"]["x"].as<double>() : 0.0;
       node.y = item["position"]["y"] ? item["position"]["y"].as<double>() : 0.0;
-    }
-    if (node.component_class.empty()) {
-      node.component_class = defaultComponentClass(node.package_name, node.filter);
     }
     graph.nodes.push_back(std::move(node));
   }
@@ -369,6 +386,14 @@ void validatePipelineGraph(const PipelineGraph & graph)
       graph.nodes.begin(),
       graph.nodes.end(),
       [&edge](const auto & node) {return node.id == edge.to.node;});
+    if (source->type == "filter" && !filterPortIsValid(*source, edge.from.port, true)) {
+      throw std::runtime_error(
+        "Filter output port '" + edge.from.port + "' is not declared on node '" + source->id + "'");
+    }
+    if (target->type == "filter" && !filterPortIsValid(*target, edge.to.port, false)) {
+      throw std::runtime_error(
+        "Filter input port '" + edge.to.port + "' is not declared on node '" + target->id + "'");
+    }
     const auto source_type = nodeTypeForEdge(*source, true, edge.from.port);
     const auto target_type = nodeTypeForEdge(*target, false, edge.to.port);
     if (!source_type.empty() && !target_type.empty() && source_type != target_type) {

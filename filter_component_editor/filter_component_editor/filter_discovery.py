@@ -21,7 +21,6 @@ class FilterExport:
     output_ports: str = ""
     kind: str = "filter"
     chain_data_type: str = ""
-    chain_param_prefix: str = "filters"
 
 
 @dataclass(frozen=True)
@@ -74,7 +73,7 @@ def discover_filters() -> DiscoveryResult:
 
         registered_components = _component_classes(package, prefix)
         package_filters: list[str] = []
-        filter_types: dict[str, tuple[str, str, str, str, str, str, str]] = {}
+        filter_types: dict[str, tuple[str, str, str, str, str, str]] = {}
         for export in root.findall("export"):
             for item in export.findall("filter_component"):
                 point_type = item.attrib.get("type", "")
@@ -97,7 +96,6 @@ def discover_filters() -> DiscoveryResult:
                         item.attrib.get("output_ports", ""),
                         item.attrib.get("kind", "filter") or "filter",
                         item.attrib.get("chain_data_type", ""),
-                        item.attrib.get("chain_param_prefix", "filters") or "filters",
                     )
                     defaults_path = item.attrib.get("chain_plugin_defaults", "").strip()
                     if defaults_path:
@@ -109,7 +107,7 @@ def discover_filters() -> DiscoveryResult:
             component_class = f"{package}::{filter_name}Component"
             if component_class not in registered_components:
                 continue
-            input_type, output_type, input_ports, output_ports, kind, chain_data_type, chain_param_prefix = filter_types[filter_name]
+            input_type, output_type, input_ports, output_ports, kind, chain_data_type = filter_types[filter_name]
             result.filters.append(
                 FilterExport(
                     package=package,
@@ -121,7 +119,6 @@ def discover_filters() -> DiscoveryResult:
                     output_ports=output_ports,
                     kind=kind,
                     chain_data_type=chain_data_type,
-                    chain_param_prefix=chain_param_prefix,
                 )
             )
     return result

@@ -59,8 +59,7 @@ filters, topic types, and component classes.
 The framework can also host upstream [`ros/filters`](https://github.com/ros/filters)
 `filters::FilterChain<T>` pipelines as regular lifecycle filter components.
 Use `pcl_filter_components_filter_chain` for the PCL chain components or
-`grid_map_components_filter_chain` for Grid Map chains and configure the chain
-parameters under the component's `filter_chain` prefix.
+`grid_map_components_filter_chain` for Grid Map chains.
 
 ![Filter Chain Editor Nodes](filter_component_editor/doc/filters.png)
 

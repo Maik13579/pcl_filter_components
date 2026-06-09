@@ -30,7 +30,6 @@ def test_grid_map_filter_chain_component_is_discoverable_with_metadata() -> None
     )
     assert item.kind == "filter_chain"
     assert item.chain_data_type == "grid_map::GridMap"
-    assert item.chain_param_prefix == "filters"
     assert item.input_type == "GridMap"
     assert item.input_ports == "map:GridMap"
     assert item.output_type == "GridMap"

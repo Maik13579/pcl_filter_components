@@ -69,8 +69,8 @@ class MyComponent
 {
 public:
   using Base = filter_component_base::ros::FilterComponentBase;
-  using CloudAdapter = pcl_filter_components_type_adapters::ros::PclCloudAdapter<PointT>;
-  using StampedCloud = pcl::PointCloud<PointT>;
+  using CloudAdapter = custom_components::ros::CloudAdapter<PointT>;
+  using StampedCloud = custom_components::Cloud<PointT>;
   using PortDescriptor = typename Base::PortDescriptor;
 
   explicit MyComponent(const rclcpp::NodeOptions & options)
@@ -144,8 +144,8 @@ struct MyChainTraits
 };
 ```
 
-The component passes the fixed `filters` parameter prefix with the node logging
-and parameter interfaces to `filters::FilterChain<T>::configure()`. Chain
+The component passes the node logging and parameter interfaces to
+`filters::FilterChain<T>::configure()`. Chain
 plugins must be exported for the exact `filters::FilterBase<T>` base class
 string named by `TraitsT::dataType()`.
 

@@ -113,8 +113,8 @@ class Graph:
             nodes_by_id[node.id] = node
             if node.type not in {"filter", "topic"}:
                 raise ValueError(f"unsupported node type {node.type}")
-            if node.type == "filter" and not (node.component_class or (node.package and node.filter)):
-                raise ValueError(f"filter node {node.id} has no component identity")
+            if node.type == "filter" and not node.component_class:
+                raise ValueError(f"filter node {node.id} has no component class")
             if node.type == "topic" and not node.topic:
                 raise ValueError(f"topic node {node.id} has no topic")
             if node.type == "topic" and not (node.input_type or node.output_type):
@@ -135,6 +135,12 @@ class Graph:
                 raise ValueError(f"edge target {edge.target.node} does not exist")
             if edge.source.node == edge.target.node:
                 raise ValueError(f"self edge on {edge.source.node} is invalid")
+            source_node = nodes_by_id[edge.source.node]
+            target_node = nodes_by_id[edge.target.node]
+            if source_node.type == "filter" and not _filter_port_is_valid(source_node, edge.source.port, True):
+                raise ValueError(f"filter output port {source_node.id}:{edge.source.port} is not declared")
+            if target_node.type == "filter" and not _filter_port_is_valid(target_node, edge.target.port, False):
+                raise ValueError(f"filter input port {target_node.id}:{edge.target.port} is not declared")
             source_type = self._node_type(nodes_by_id[edge.source.node], outgoing=True, port=edge.source.port)
             target_type = self._node_type(nodes_by_id[edge.target.node], outgoing=False, port=edge.target.port)
             if type_by_node:
@@ -200,7 +206,7 @@ class Graph:
     def _node_type(node: Node, outgoing: bool, port: str = "") -> str:
         if node.type == "topic":
             return _type_for_port(node.output_type or node.input_type, port, outgoing)
-        return _type_for_port(
+        return _type_for_filter_port(
             (node.output_ports or node.output_type) if outgoing else (node.input_ports or node.input_type),
             port,
             outgoing,
@@ -323,6 +329,22 @@ def _type_for_port(value: str, port: str, outgoing: bool) -> str:
         if port == stream_type or port == port_name or port == inferred_port:
             return stream_type
     return ports[0][1] if outgoing else ""
+
+
+def _type_for_filter_port(value: str, port: str, outgoing: bool) -> str:
+    ports = _split_ports(value)
+    if not ports or not port or port in {"in", "out"}:
+        return ""
+    for index, (port_name, stream_type) in enumerate(ports):
+        inferred_port = _port_name_for_type(stream_type, index, len(ports), outgoing)
+        if port == stream_type or port == port_name or port == inferred_port:
+            return stream_type
+    return ""
+
+
+def _filter_port_is_valid(node: Node, port: str, outgoing: bool) -> bool:
+    spec = (node.output_ports or node.output_type) if outgoing else (node.input_ports or node.input_type)
+    return bool(_type_for_filter_port(spec, port, outgoing))
 
 
 def _canonical_port(value: str, port: str, outgoing: bool) -> str:

@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-from ament_index_python.packages import get_package_prefix, get_package_share_directory
+from ament_index_python.packages import get_package_prefix
 
 from filter_component_editor.filter_discovery import discover_filters
 
@@ -89,7 +89,6 @@ def test_discovery_reads_filter_and_type_adapter_exports() -> None:
     assert voxel.component_class == "pcl_filter_components_xyzi::VoxelGridXYZIComponent"
     assert voxel.kind == "filter"
     assert voxel.chain_data_type == ""
-    assert voxel.chain_param_prefix == "filters"
 
     types = {(item.package, item.point_type): item for item in discovery.types}
     assert types[("pcl_filter_components_xyzi", "PointXYZI")].message_type == "sensor_msgs/msg/PointCloud2"
@@ -171,7 +170,6 @@ def test_filter_chain_components_are_discoverable_with_metadata() -> None:
         assert item.output_ports == f"{port}:{point_type}"
         assert item.kind == "filter_chain"
         assert item.chain_data_type == chain_data_type
-        assert item.chain_param_prefix == "filters"
 
 
 def test_filter_chain_components_register_in_rclcpp_components_index() -> None:
@@ -202,11 +200,3 @@ def test_pcl_test_filter_chain_plugins_are_discoverable() -> None:
         assert plugins[plugin_name].base_class_type == (
             "filters::FilterBase<pcl::PointCloud<pcl::PointXYZI>>"
         )
-
-
-def test_factory_installs_example_pipeline() -> None:
-    example = Path(get_package_share_directory("filter_component_factory")) / "config" / "example_pipeline.yaml"
-    text = example.read_text(encoding="utf-8")
-
-    assert "package: pcl_filter_components_xyzi" in text
-    assert "component_class: pcl_filter_components_xyzi::VoxelGridXYZIComponent" in text

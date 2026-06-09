@@ -9,9 +9,9 @@ nodes:
     position: {x: 280.0, y: 0.0}
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_components_example
     filter: VoxelGridXYZI
-    component_class: pcl_filter_components_xyzi::VoxelGridXYZIComponent
+    component_class: filter_components_example::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
     parameters:
@@ -27,15 +27,15 @@ nodes:
         qos: {reliability: best_effort, history: keep_last, depth: 5, durability: volatile}
     position: {x: 280.0, y: 160.0}
   - type: topic
-    topic: /pcl_pipeline/voxel_filtered
+    topic: /filter_pipeline/voxel_filtered
     input_type: PointXYZI
     output_type: PointXYZI
     position: {x: 280.0, y: 320.0}
   - type: filter
     name: CropBoxXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_components_example
     filter: CropBoxXYZI
-    component_class: pcl_filter_components_xyzi::CropBoxXYZIComponent
+    component_class: filter_components_example::CropBoxXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
     parameters:
@@ -62,8 +62,8 @@ edges:
   - from: {node: /points/input, port: out, direction: output}
     to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
   - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
-    to: {node: /pcl_pipeline/voxel_filtered, port: in, direction: input}
-  - from: {node: /pcl_pipeline/voxel_filtered, port: out, direction: output}
+    to: {node: /filter_pipeline/voxel_filtered, port: in, direction: input}
+  - from: {node: /filter_pipeline/voxel_filtered, port: out, direction: output}
     to: {node: CropBoxXYZI_1, port: cloud, direction: input}
   - from: {node: CropBoxXYZI_1, port: cloud, direction: output}
     to: {node: /points/output, port: in, direction: input}

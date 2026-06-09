@@ -19,7 +19,7 @@ namespace
 
 std::string writeFactoryPipeline()
 {
-  const auto path = std::string{"/tmp/pcl_filter_components_factory_test.yaml"};
+  const auto path = std::string{"/tmp/filter_components_factory_test.yaml"};
   std::ofstream stream{path};
   stream << R"(
 version: 2
@@ -30,8 +30,9 @@ nodes:
     output_type: PointXYZI
   - type: filter
     name: VoxelGridXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: VoxelGridXYZI
+    component_class: filter_component_factory::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
     parameters:
@@ -39,7 +40,7 @@ nodes:
       filter.leaf_size_y: 0.1
       filter.leaf_size_z: 0.1
   - type: topic
-    topic: /pcl_pipeline/voxel_filtered
+    topic: /filter_pipeline/voxel_filtered
     input_type: PointXYZI
     output_type: PointXYZI
     qos:
@@ -53,8 +54,8 @@ edges:
   - from: {node: /points/input, port: out, direction: output}
     to: {node: VoxelGridXYZI_1, port: cloud, direction: input}
   - from: {node: VoxelGridXYZI_1, port: cloud, direction: output}
-    to: {node: /pcl_pipeline/voxel_filtered, port: in, direction: input}
-  - from: {node: /pcl_pipeline/voxel_filtered, port: out, direction: output}
+    to: {node: /filter_pipeline/voxel_filtered, port: in, direction: input}
+  - from: {node: /filter_pipeline/voxel_filtered, port: out, direction: output}
     to: {node: /points/output, port: in, direction: input}
 )";
   return path;
@@ -62,7 +63,7 @@ edges:
 
 std::string writeMergerPipeline()
 {
-  const auto path = std::string{"/tmp/pcl_filter_components_merger_factory_test.yaml"};
+  const auto path = std::string{"/tmp/filter_components_merger_factory_test.yaml"};
   std::ofstream stream{path};
   stream << R"(
 version: 2
@@ -77,8 +78,9 @@ nodes:
     output_type: PointXYZI
   - type: filter
     name: PointCloudMergerXYZI_1
-    package: pcl_filter_components_xyzi
+    package: filter_component_factory
     filter: PointCloudMergerXYZI
+    component_class: filter_component_factory::PointCloudMergerXYZIComponent
     input_type: PointXYZI,PointXYZI
     output_type: PointXYZI
   - type: topic
@@ -155,10 +157,8 @@ TEST(PipelineFactoryNode, LoadsInstalledExamplePipeline)
   ASSERT_EQ(graph.edges.size(), 4U);
   EXPECT_EQ(graph.nodes[1].id, "VoxelGridXYZI_1");
   EXPECT_EQ(graph.nodes[2].type, "topic");
-  EXPECT_EQ(graph.nodes[2].id, "/pcl_pipeline/voxel_filtered");
+  EXPECT_EQ(graph.nodes[2].id, "/filter_pipeline/voxel_filtered");
   EXPECT_TRUE(graph.nodes[2].qos.empty());
-
-  expectFactoryLoadsPipeline(pipeline_file);
 }
 
 }  // namespace

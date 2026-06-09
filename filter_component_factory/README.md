@@ -41,9 +41,8 @@ The factory passes sync entries through as `sync.mode`, `sync.queue_size`, and
 `sync.max_interval` parameters for components that declare more than one input
 port. Removed `sync.policy` graphs are rejected during validation.
 
-Legacy graph ports named `in` and `out` are normalized to the modern `cloud`
-port for filter components. Topic-node ports such as `in` and `out` remain graph
-endpoint labels.
+Filter edges must use declared port names. Topic-node ports such as `in` and
+`out` remain graph endpoint labels.
 
 Factory headers use the `filter_component_factory/...` include root and the
 `filter_component_factory::pipeline` namespace.

@@ -13,8 +13,8 @@ def generate_launch_description():
 
     factory_node = Node(
         package="filter_component_factory",
-        executable="pcl_pipeline_factory",
-        name="pcl_pipeline_factory",
+        executable="filter_pipeline_factory",
+        name="filter_pipeline_factory",
         output="screen",
         parameters=[{"pipeline_file": pipeline_file}],
     )
@@ -27,7 +27,7 @@ def generate_launch_description():
                 "config",
                 "example_pipeline.yaml",
             ]),
-            description="Path to the saved PCL filter pipeline YAML graph.",
+            description="Path to the saved filter pipeline YAML graph.",
         ),
         factory_node,
     ])

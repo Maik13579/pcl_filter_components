@@ -32,9 +32,9 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
-                component_class="pcl_filter_components_xyzi::VoxelGridXYZIComponent",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_type="PointXYZI",
                 output_type="PointXYZI",
                 parameters={"filter.leaf_size_x": 0.1},
@@ -43,9 +43,9 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
                 sync={"mode": "receipt_time", "max_interval": 0.1},
             ),
             Node(
-                id="/pcl_pipeline/voxel_to_output",
+                id="/filter_pipeline/voxel_to_output",
                 type="topic",
-                topic="/pcl_pipeline/voxel_to_output",
+                topic="/filter_pipeline/voxel_to_output",
                 input_type="PointXYZI",
                 output_type="PointXYZI",
                 qos={"depth": 7, "reliability": "reliable"},
@@ -54,15 +54,15 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
             Node(id="/filtered", type="topic", topic="/filtered", input_type="PointXYZI", output_type="PointXYZI"),
         ],
         edges=[
-            Edge(output("/points", "out"), input_("VoxelGridXYZI_1", "in")),
-            Edge(output("VoxelGridXYZI_1", "out"), input_("/pcl_pipeline/voxel_to_output", "in")),
-            Edge(output("/pcl_pipeline/voxel_to_output", "out"), input_("/filtered", "in")),
+            Edge(output("/points", "out"), input_("VoxelGridXYZI_1", "cloud")),
+            Edge(output("VoxelGridXYZI_1", "cloud"), input_("/filter_pipeline/voxel_to_output", "in")),
+            Edge(output("/filter_pipeline/voxel_to_output", "out"), input_("/filtered", "in")),
         ],
     )
     path = tmp_path / "pipeline.yaml"
 
     save_graph(graph, str(path))
-    assert "id: /pcl_pipeline/voxel_to_output" not in path.read_text(encoding="utf-8")
+    assert "id: /filter_pipeline/voxel_to_output" not in path.read_text(encoding="utf-8")
     assert "id: VoxelGridXYZI_1" not in path.read_text(encoding="utf-8")
     assert "id: /points" not in path.read_text(encoding="utf-8")
     assert "id: /filtered" not in path.read_text(encoding="utf-8")
@@ -87,7 +87,7 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
     assert loaded.nodes[1].sync["max_interval"] == 0.1
     assert loaded.nodes[0].position == {"x": 10.0, "y": 20.0}
     assert loaded.editor == {"orientation": "top_down", "show_filters": False}
-    assert loaded.nodes[2].topic == "/pcl_pipeline/voxel_to_output"
+    assert loaded.nodes[2].topic == "/filter_pipeline/voxel_to_output"
     assert loaded.nodes[2].qos == {}
     assert loaded.nodes[2].position == {"x": 120.0, "y": 80.0}
     assert len(loaded.edges) == 3
@@ -102,8 +102,9 @@ def test_graph_load_ignores_old_edge_qos() -> None:
                 {
                     "type": "filter",
                     "name": "VoxelGridXYZI_1",
-                    "package": "pcl_filter_components_xyzi",
+                    "package": "filter_component_factory",
                     "filter": "VoxelGridXYZI",
+                        "component_class": "test_filter_components::VoxelGridXYZIComponent",
                     "input_type": "PointXYZI",
                     "output_type": "PointXYZI",
                 },
@@ -111,7 +112,7 @@ def test_graph_load_ignores_old_edge_qos() -> None:
             "edges": [
                 {
                     "from": {"node": "/a", "port": "out", "direction": "output"},
-                    "to": {"node": "VoxelGridXYZI_1", "port": "in", "direction": "input"},
+                    "to": {"node": "VoxelGridXYZI_1", "port": "cloud", "direction": "input"},
                     "qos": {"reliability": "reliable"},
                 }
             ],
@@ -131,8 +132,9 @@ def test_graph_load_rejects_missing_endpoint_direction() -> None:
                     {
                         "type": "filter",
                         "name": "VoxelGridXYZI_1",
-                        "package": "pcl_filter_components_xyzi",
+                        "package": "filter_component_factory",
                         "filter": "VoxelGridXYZI",
+                        "component_class": "test_filter_components::VoxelGridXYZIComponent",
                         "input_type": "PointXYZI",
                         "output_type": "PointXYZI",
                     },
@@ -157,8 +159,9 @@ def test_graph_load_rejects_wrong_endpoint_direction() -> None:
                     {
                         "type": "filter",
                         "name": "VoxelGridXYZI_1",
-                        "package": "pcl_filter_components_xyzi",
+                        "package": "filter_component_factory",
                         "filter": "VoxelGridXYZI",
+                        "component_class": "test_filter_components::VoxelGridXYZIComponent",
                         "input_type": "PointXYZI",
                         "output_type": "PointXYZI",
                     },
@@ -180,8 +183,9 @@ def test_graph_load_rejects_wrong_endpoint_direction() -> None:
                     {
                         "type": "filter",
                         "name": "VoxelGridXYZI_1",
-                        "package": "pcl_filter_components_xyzi",
+                        "package": "filter_component_factory",
                         "filter": "VoxelGridXYZI",
+                        "component_class": "test_filter_components::VoxelGridXYZIComponent",
                         "input_type": "PointXYZI",
                         "output_type": "PointXYZI",
                     },
@@ -201,7 +205,7 @@ def test_graph_load_rejects_version_1() -> None:
         graph_from_dict({"version": 1, "nodes": [], "edges": []})
 
 
-def test_graph_save_canonicalizes_same_named_filter_ports(tmp_path: Path) -> None:
+def test_graph_rejects_filter_side_legacy_in_out_ports() -> None:
     graph = Graph(
         nodes=[
             Node(id="/input", type="topic", topic="/input", input_type="PointXYZI", output_type="PointXYZI"),
@@ -209,8 +213,9 @@ def test_graph_save_canonicalizes_same_named_filter_ports(tmp_path: Path) -> Non
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_ports="cloud:PointXYZI",
                 output_ports="cloud:PointXYZI",
             ),
@@ -221,15 +226,9 @@ def test_graph_save_canonicalizes_same_named_filter_ports(tmp_path: Path) -> Non
             Edge(output("VoxelGridXYZI_1", "out"), input_("/output", "in")),
         ],
     )
-    path = tmp_path / "pipeline.yaml"
 
-    save_graph(graph, str(path))
-    loaded = load_graph(str(path))
-
-    assert loaded.edges[0].target.port == "cloud"
-    assert loaded.edges[0].target.direction == "input"
-    assert loaded.edges[1].source.port == "cloud"
-    assert loaded.edges[1].source.direction == "output"
+    with pytest.raises(ValueError, match="filter input port"):
+        graph.validate()
 
 
 def test_graph_load_preserves_sync_parameters() -> None:
@@ -240,8 +239,9 @@ def test_graph_load_preserves_sync_parameters() -> None:
                 {
                     "type": "filter",
                     "name": "PointCloudMergerXYZI_1",
-                    "package": "pcl_filter_components_xyzi",
+                    "package": "filter_component_factory",
                     "filter": "PointCloudMergerXYZI",
+                        "component_class": "test_filter_components::PointCloudMergerXYZIComponent",
                     "input_type": "PointXYZI,PointXYZI",
                     "output_type": "PointXYZI",
                     "parameters": {
@@ -268,8 +268,9 @@ def test_graph_load_rejects_removed_sync_policy() -> None:
                     {
                         "type": "filter",
                         "name": "PointCloudMergerXYZI_1",
-                        "package": "pcl_filter_components_xyzi",
+                        "package": "filter_component_factory",
                         "filter": "PointCloudMergerXYZI",
+                        "component_class": "test_filter_components::PointCloudMergerXYZIComponent",
                         "input_type": "PointXYZI,PointXYZI",
                         "output_type": "PointXYZI",
                         "sync": {"policy": "ExactTime"},
@@ -287,13 +288,14 @@ def test_graph_round_trip_preserves_ros_message_compatibility(tmp_path: Path) ->
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_type="PointXYZI",
                 output_type="PointXYZI",
             ),
         ],
-        edges=[Edge(output("/points", "out"), input_("VoxelGridXYZI_1", "in"), compatibility="ros_message")],
+        edges=[Edge(output("/points", "out"), input_("VoxelGridXYZI_1", "cloud"), compatibility="ros_message")],
     )
     path = tmp_path / "pipeline.yaml"
 
@@ -313,13 +315,14 @@ def test_graph_accepts_marked_ros_message_compatible_type_mismatch() -> None:
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_type="PointXYZI",
                 output_type="PointXYZI",
             ),
         ],
-        edges=[Edge(output("/points"), input_("VoxelGridXYZI_1"), compatibility="ros_message")],
+        edges=[Edge(output("/points"), input_("VoxelGridXYZI_1", "cloud"), compatibility="ros_message")],
     )
 
     graph.validate(
@@ -338,19 +341,20 @@ def test_graph_rejects_marked_ros_message_type_mismatch_when_ros_types_differ() 
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_type="PointXYZI",
                 output_type="PointXYZI",
             ),
         ],
-        edges=[Edge(output("/indices"), input_("VoxelGridXYZI_1"), compatibility="ros_message")],
+        edges=[Edge(output("/indices"), input_("VoxelGridXYZI_1", "cloud"), compatibility="ros_message")],
     )
 
     with pytest.raises(ValueError, match="type mismatch"):
         graph.validate(
             message_type_by_logical={
-                "PointIndices": "pcl_msgs/msg/PointIndices",
+                "PointIndices": "test_msgs/msg/PointIndices",
                 "PointXYZI": "sensor_msgs/msg/PointCloud2",
             }
         )
@@ -364,13 +368,14 @@ def test_graph_rejects_incompatible_custom_types() -> None:
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_type="PointXYZI",
                 output_type="PointXYZI",
             ),
         ],
-        edges=[Edge(output("/indices"), input_("VoxelGridXYZI_1"))],
+        edges=[Edge(output("/indices"), input_("VoxelGridXYZI_1", "cloud"))],
     )
 
     with pytest.raises(ValueError):
@@ -380,10 +385,18 @@ def test_graph_rejects_incompatible_custom_types() -> None:
 def test_graph_rejects_topic_type_mismatch() -> None:
     graph = Graph(
         nodes=[
-            Node(id="filter_1", type="filter", package="pcl_filter_components_xyzi", filter="VoxelGridXYZI", output_type="PointXYZI"),
+            Node(
+                id="filter_1",
+                type="filter",
+                package="filter_component_factory",
+                filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
+                output_type="PointXYZI",
+                output_ports="cloud:PointXYZI,orig_cloud:PointXYZI",
+            ),
             Node(id="/indices", type="topic", topic="/indices", input_type="PointIndices", output_type="PointIndices"),
         ],
-        edges=[Edge(output("filter_1"), input_("/indices"))],
+        edges=[Edge(output("filter_1", "cloud"), input_("/indices"))],
     )
 
     with pytest.raises(ValueError):
@@ -397,9 +410,11 @@ def test_graph_accepts_original_cloud_output_port() -> None:
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 output_type="PointXYZI",
+                output_ports="cloud:PointXYZI,orig_cloud:PointXYZI",
             ),
             Node(id="/original", type="topic", topic="/original", input_type="PointXYZI", output_type="PointXYZI"),
         ],
@@ -418,8 +433,9 @@ def test_graph_accepts_repeated_input_ports() -> None:
                 id="PointCloudMergerXYZI_1",
                 name="PointCloudMergerXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="PointCloudMergerXYZI",
+                component_class="test_filter_components::PointCloudMergerXYZIComponent",
                 input_type="PointXYZI,PointXYZI",
                 output_type="PointXYZI",
             ),
@@ -442,8 +458,9 @@ def test_graph_rejects_duplicate_filter_input_port() -> None:
                 id="PointCloudMergerXYZI_1",
                 name="PointCloudMergerXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="PointCloudMergerXYZI",
+                component_class="test_filter_components::PointCloudMergerXYZIComponent",
                 input_type="PointXYZI,PointXYZI",
                 output_type="PointXYZI",
             ),
@@ -465,8 +482,9 @@ def test_graph_rejects_duplicate_filter_output_port() -> None:
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_type="PointXYZI",
                 output_type="PointXYZI",
             ),
@@ -474,8 +492,8 @@ def test_graph_rejects_duplicate_filter_output_port() -> None:
             Node(id="/b", type="topic", topic="/b", input_type="PointXYZI", output_type="PointXYZI"),
         ],
         edges=[
-            Edge(output("VoxelGridXYZI_1", "out"), input_("/a", "in")),
-            Edge(output("VoxelGridXYZI_1", "out"), input_("/b", "in")),
+            Edge(output("VoxelGridXYZI_1", "cloud"), input_("/a", "in")),
+            Edge(output("VoxelGridXYZI_1", "cloud"), input_("/b", "in")),
         ],
     )
 
@@ -490,8 +508,9 @@ def test_graph_accepts_explicit_repeated_output_ports() -> None:
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_type="PointXYZI",
                 output_type="PointXYZI,PointXYZI",
                 output_ports="cloud:PointXYZI,orig_cloud:PointXYZI",
@@ -515,16 +534,17 @@ def test_graph_rejects_filter_publishing_and_subscribing_same_topic() -> None:
                 id="VoxelGridXYZI_1",
                 name="VoxelGridXYZI_1",
                 type="filter",
-                package="pcl_filter_components_xyzi",
+                package="filter_component_factory",
                 filter="VoxelGridXYZI",
+                component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_type="PointXYZI",
                 output_type="PointXYZI",
             ),
             Node(id="/points", type="topic", topic="/points", input_type="PointXYZI", output_type="PointXYZI"),
         ],
         edges=[
-            Edge(output("/points", "out"), input_("VoxelGridXYZI_1", "in")),
-            Edge(output("VoxelGridXYZI_1", "out"), input_("/points", "in")),
+            Edge(output("/points", "out"), input_("VoxelGridXYZI_1", "cloud")),
+            Edge(output("VoxelGridXYZI_1", "cloud"), input_("/points", "in")),
         ],
     )
 
