@@ -4,6 +4,8 @@
 #include <rclcpp_components/register_node_macro.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 
+#include <string>
+
 namespace filter_component_factory
 {
 
@@ -54,8 +56,31 @@ public:
   using TestLifecycleComponent::TestLifecycleComponent;
 };
 
+class ShmKeysComponent : public TestLifecycleComponent
+{
+public:
+  explicit ShmKeysComponent(const rclcpp::NodeOptions & options)
+  : TestLifecycleComponent(options)
+  {
+    this->declare_parameter<std::string>("shm_key.global_map", "global_map");
+    this->declare_parameter<std::string>("shm_key.pose_cache", "pose_cache");
+  }
+
+  CallbackReturn on_configure(const rclcpp_lifecycle::State &) override
+  {
+    if (this->get_parameter("shm_key.global_map").as_string() != "slam/global_map") {
+      return CallbackReturn::FAILURE;
+    }
+    if (this->get_parameter("shm_key.pose_cache").as_string() != "pose_cache") {
+      return CallbackReturn::FAILURE;
+    }
+    return CallbackReturn::SUCCESS;
+  }
+};
+
 }  // namespace filter_component_factory
 
 RCLCPP_COMPONENTS_REGISTER_NODE(filter_component_factory::CropBoxXYZIComponent)
 RCLCPP_COMPONENTS_REGISTER_NODE(filter_component_factory::PointCloudMergerXYZIComponent)
 RCLCPP_COMPONENTS_REGISTER_NODE(filter_component_factory::VoxelGridXYZIComponent)
+RCLCPP_COMPONENTS_REGISTER_NODE(filter_component_factory::ShmKeysComponent)

@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>filter_component_synchronizer</depend>
+  <depend>component_shm</depend>
   <depend>filters</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>

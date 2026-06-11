@@ -55,12 +55,14 @@ class Node:
     output_type: str = ""
     input_ports: str = ""
     output_ports: str = ""
+    shm_keys: str = ""
     topic: str = ""
     parameters: dict[str, Any] = field(default_factory=dict)
     qos: dict[str, Any] = field(default_factory=dict)
     inputs: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)
     sync: dict[str, Any] = field(default_factory=dict)
+    shm: dict[str, Any] = field(default_factory=dict)
     position: dict[str, float] = field(default_factory=lambda: {"x": 0.0, "y": 0.0})
 
     def to_dict(self) -> dict[str, Any]:
@@ -81,6 +83,7 @@ class Node:
             "output_type",
             "input_ports",
             "output_ports",
+            "shm_keys",
             "topic",
         ):
             value = getattr(self, key)
@@ -90,6 +93,8 @@ class Node:
             value = getattr(self, key)
             if value and (self.type == "filter" or key not in {"inputs", "outputs"}):
                 data[key] = value
+        if self.type == "filter" and self.shm.get("remappings"):
+            data["shm"] = {"remappings": dict(self.shm["remappings"])}
         return data
 
 
@@ -283,12 +288,14 @@ def graph_from_dict(data: dict[str, Any]) -> Graph:
                 output_type=item.get("output_type", ""),
                 input_ports=item.get("input_ports", ""),
                 output_ports=item.get("output_ports", ""),
+                shm_keys=item.get("shm_keys", ""),
                 topic=item.get("topic", ""),
                 parameters=parameters,
                 qos={},
                 inputs=item.get("inputs", {}) or {},
                 outputs=item.get("outputs", {}) or {},
                 sync=sync,
+                shm=item.get("shm", {}) or {},
                 position=item.get("position", {"x": 0.0, "y": 0.0}) or {"x": 0.0, "y": 0.0},
             )
         )

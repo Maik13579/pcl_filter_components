@@ -24,6 +24,21 @@ from `out` to a filter's `cloud` input, and the filter's `cloud` output connects
 to an output topic node's `in` port. Port QoS, filter parameters, and multi-input
 sync settings can be edited on the graph node and saved with the YAML.
 
+Filters that declare `shm_keys` metadata also get a Shm tab. The tab shows each
+key name, type, access mode, and editable remap value. Remaps default to the key
+name and are saved as:
+
+```yaml
+shm:
+  remappings:
+    global_map: slam/global_map
+```
+
+The right side of the editor shows a Shared Memory Keys inventory grouped by the
+effective remapped key. Entries list the using filters and turn red when the same
+effective key is used with incompatible declared types. Clicking an entry selects
+the filters that use that key.
+
 The background pipeline is used for parameter discovery and graph validation.
 Refreshing it applies the current graph to the background runtime. Saving YAML
 produces the graph consumed by the factory.

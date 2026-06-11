@@ -50,6 +50,39 @@ updates after all ports have a latest message. These parameters exist only for
 multi-input components. A complete input set is then available through the same
 `takeInput<AdapterT>("port")` accessors used by single-input components.
 
+## Shared-Memory Keys
+
+Components can declare typed shared-memory keys in addition to input and output
+ports. The base class uses `component_shm::ShmView` internally and declares one
+string remap parameter per key:
+
+```text
+shm_key.<key_name>
+```
+
+The default remap value is the key name itself. During each lifecycle configure,
+the base creates a fresh `ShmView`, reads all `shm_key.*` values, and installs
+those remaps into the view. Cleanup followed by configure therefore recreates
+the view for the current parameter values. Saved graph YAML can bind a local key
+such as `global_map` to an effective process-wide key such as `slam/global_map`.
+
+Filter authors should use the checked helper API instead of accessing the
+registry directly:
+
+```cpp
+auto map = shmGet<MyMap>("global_map");
+auto maybe_cache = shmTryGet<PoseCache>("pose_cache");
+auto mutable_map = shmGetMutable<MyMap>("global_map");
+shmSet<MyMap>("global_map", next_map);
+shmSetShared<MyMap>("global_map", shared_map);
+```
+
+All helpers verify that the key was declared and that the requested C++ type
+matches the declared key type. Mutable access and replacement helpers also
+require `ShmAccess::ReadWrite`; read-only keys can only use const get helpers.
+This prevents accidental writes through the filter author API, although it
+cannot prevent mutation through a mutable shared pointer obtained elsewhere.
+
 ## Creating a Custom Component
 
 Custom components derive from `FilterComponentBase` and
@@ -72,9 +105,10 @@ public:
   using CloudAdapter = custom_components::ros::CloudAdapter<PointT>;
   using StampedCloud = custom_components::Cloud<PointT>;
   using PortDescriptor = typename Base::PortDescriptor;
+  using ShmKeyDescriptor = typename Base::ShmKeyDescriptor;
 
   explicit MyComponent(const rclcpp::NodeOptions & options)
-  : Base("my_filter", options, inputPorts(), outputPorts())
+  : Base("my_filter", options, inputPorts(), outputPorts(), shmKeys())
   {
     // Declare filter-specific parameters here.
   }
@@ -98,6 +132,17 @@ protected:
     }};
   }
 
+  static std::array<ShmKeyDescriptor, 1> shmKeys()
+  {
+    return {{
+      Base::template shmKey<MyMap>(
+        "global_map",
+        "Shared map used by this filter.",
+        Base::ShmAccess::ReadWrite,
+        "my_pkg::MyMap"),
+    }};
+  }
+
   void configure() override
   {
     filter_.configure(readParams());
@@ -106,6 +151,7 @@ protected:
   void process() override
   {
     auto input = this->template takeInput<CloudAdapter>("cloud");
+    auto shared_map = this->template shmGetMutable<MyMap>("global_map");
     auto output = std::make_unique<StampedCloud>();
     output->header = input->header;
     filter_.filter(*input, *output);

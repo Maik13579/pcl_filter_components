@@ -43,12 +43,14 @@ struct PipelineNode
   std::string output_type;
   std::string input_ports;
   std::string output_ports;
+  std::string shm_keys;
   std::string topic;
   std::map<std::string, std::string> parameters;
   std::map<std::string, std::string> qos;
   std::map<std::string, std::map<std::string, std::string>> inputs;
   std::map<std::string, std::map<std::string, std::string>> outputs;
   std::map<std::string, std::string> sync;
+  std::map<std::string, std::string> shm_remappings;
   double x{0.0};
   double y{0.0};
 };

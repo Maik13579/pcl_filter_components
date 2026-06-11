@@ -1,0 +1,3 @@
+[submodule "component_shm"]
+	path = component_shm
+	url = git@github.com:Maik13579/component_shm.git

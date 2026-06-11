@@ -4,16 +4,19 @@
 #ifndef FILTER_COMPONENT_BASE__ROS__FILTER_COMPONENT_BASE_HPP_
 #define FILTER_COMPONENT_BASE__ROS__FILTER_COMPONENT_BASE_HPP_
 
-#include <memory>
+#include <algorithm>
 #include <array>
 #include <functional>
+#include <memory>
 #include <string>
 #include <typeindex>
+#include <typeinfo>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include <component_shm/shm_view.hpp>
 #include <rclcpp/create_publisher.hpp>
 #include <lifecycle_msgs/msg/state.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -30,6 +33,37 @@ class FilterComponentBase : public rclcpp_lifecycle::LifecycleNode
 public:
   using CallbackReturn =
     rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
+
+  enum class ShmAccess
+  {
+    ReadOnly,
+    ReadWrite,
+  };
+
+  struct ShmKeyDescriptor
+  {
+    std::string name;
+    std::string description;
+    std::string type_name;
+    std::type_index type_index;
+    ShmAccess access{ShmAccess::ReadOnly};
+  };
+
+  template<typename T>
+  static ShmKeyDescriptor shmKey(
+    const std::string & name,
+    const std::string & description,
+    ShmAccess access,
+    const std::string & type_name = typeid(T).name())
+  {
+    using StoredType = std::remove_cv_t<T>;
+    return {
+      name,
+      description,
+      type_name,
+      std::type_index(typeid(StoredType)),
+      access};
+  }
 
   struct PublisherConcept
   {
@@ -134,10 +168,27 @@ public:
     const rclcpp::NodeOptions & options,
     const std::array<PortDescriptor, InputCount> & input_ports,
     const std::array<PortDescriptor, OutputCount> & output_ports)
+  : FilterComponentBase(
+      node_name,
+      options,
+      input_ports,
+      output_ports,
+      std::array<ShmKeyDescriptor, 0U>{})
+  {
+  }
+
+  template <size_t InputCount, size_t OutputCount, size_t ShmKeyCount>
+  FilterComponentBase(
+    const std::string & node_name,
+    const rclcpp::NodeOptions & options,
+    const std::array<PortDescriptor, InputCount> & input_ports,
+    const std::array<PortDescriptor, OutputCount> & output_ports,
+    const std::array<ShmKeyDescriptor, ShmKeyCount> & shm_keys)
   : rclcpp_lifecycle::LifecycleNode(node_name, options)
   {
     input_ports_.assign(input_ports.begin(), input_ports.end());
     output_ports_.assign(output_ports.begin(), output_ports.end());
+    shm_keys_.assign(shm_keys.begin(), shm_keys.end());
     for (const auto & port : input_ports_) {
       declareParameterIfNotDeclared(
         *this,
@@ -153,6 +204,13 @@ public:
         defaultPortTopic("output", port.name),
         makeParameterDescriptor(port.description));
       declarePortQosParameters("outputs", port);
+    }
+    for (const auto & key : shm_keys_) {
+      declareParameterIfNotDeclared(
+        *this,
+        shmKeyParameterName(key.name),
+        key.name,
+        makeParameterDescriptor(key.description));
     }
     if (input_ports_.size() > 1U) {
       declareParameterIfNotDeclared(
@@ -197,6 +255,11 @@ protected:
     return direction + "." + port_name + ".qos." + field;
   }
 
+  static std::string shmKeyParameterName(const std::string & key_name)
+  {
+    return "shm_key." + key_name;
+  }
+
   static std::string defaultPortTopic(const std::string & direction, const std::string & port_name)
   {
     return "~/_" + direction + "/" + port_name;
@@ -208,6 +271,7 @@ protected:
 
     try {
       readPortTopics();
+      configureShmView();
 
       configure();
 
@@ -319,6 +383,55 @@ protected:
     return synchronizer_->template peekInput<AdapterT>(port_name);
   }
 
+  template<typename T>
+  std::shared_ptr<const std::remove_cv_t<T>> shmGet(const std::string & key) const
+  {
+    verifyShmKey<T>(key);
+    return checkedShmView().template get<const std::remove_cv_t<T>>(key);
+  }
+
+  template<typename T>
+  std::shared_ptr<const std::remove_cv_t<T>> shmTryGet(const std::string & key) const
+  {
+    verifyShmKey<T>(key);
+    return checkedShmView().template tryGet<const std::remove_cv_t<T>>(key);
+  }
+
+  template<typename T>
+  std::shared_ptr<std::remove_cv_t<T>> shmGetMutable(const std::string & key) const
+  {
+    verifyWritableShmKey<T>(key);
+    return checkedShmView().template get<std::remove_cv_t<T>>(key);
+  }
+
+  template<typename T>
+  std::shared_ptr<std::remove_cv_t<T>> shmTryGetMutable(const std::string & key) const
+  {
+    verifyWritableShmKey<T>(key);
+    return checkedShmView().template tryGet<std::remove_cv_t<T>>(key);
+  }
+
+  template<typename T>
+  void shmSet(const std::string & key, T value)
+  {
+    using StoredType = std::decay_t<T>;
+    verifyWritableShmKey<StoredType>(key);
+    checkedShmView().template set<StoredType>(key, std::move(value));
+  }
+
+  template<typename T>
+  void shmSetShared(const std::string & key, std::shared_ptr<T> value)
+  {
+    using StoredType = std::remove_cv_t<T>;
+    verifyWritableShmKey<StoredType>(key);
+    checkedShmView().template setShared<StoredType>(key, std::move(value));
+  }
+
+  const component_shm::ShmView & shmView() const
+  {
+    return checkedShmView();
+  }
+
   template <typename AdapterT>
   void publish(
     const std::string & port_name,
@@ -347,6 +460,7 @@ protected:
 
   std::vector<PortDescriptor> input_ports_;
   std::vector<PortDescriptor> output_ports_;
+  std::vector<ShmKeyDescriptor> shm_keys_;
   std::unordered_map<std::string, std::string> inbound_topics_;
   std::unordered_map<std::string, std::string> outbound_topics_;
 
@@ -397,6 +511,66 @@ protected:
         "Supported values: volatile, transient_local."));
   }
 
+  void configureShmView()
+  {
+    std::unordered_map<std::string, std::string> remappings;
+    for (const auto & key : shm_keys_) {
+      remappings[key.name] = getParameter<std::string>(*this, shmKeyParameterName(key.name));
+    }
+    shm_view_ = std::make_unique<component_shm::ShmView>();
+    shm_view_->set_remappings(std::move(remappings));
+  }
+
+  const ShmKeyDescriptor & declaredShmKey(const std::string & key) const
+  {
+    const auto iter = std::find_if(
+      shm_keys_.begin(),
+      shm_keys_.end(),
+      [&key](const auto & descriptor) {return descriptor.name == key;});
+    if (iter == shm_keys_.end()) {
+      throw std::out_of_range("Shared-memory key '" + key + "' is not declared");
+    }
+    return *iter;
+  }
+
+  template<typename T>
+  const ShmKeyDescriptor & verifyShmKey(const std::string & key) const
+  {
+    (void)checkedShmView();
+    using StoredType = std::remove_cv_t<T>;
+    const auto & descriptor = declaredShmKey(key);
+    if (descriptor.type_index != std::type_index(typeid(StoredType))) {
+      throw std::invalid_argument("Shared-memory key '" + key + "' was declared with a different type");
+    }
+    return descriptor;
+  }
+
+  component_shm::ShmView & checkedShmView()
+  {
+    if (!shm_view_) {
+      throw std::runtime_error("Shared-memory view is not configured");
+    }
+    return *shm_view_;
+  }
+
+  const component_shm::ShmView & checkedShmView() const
+  {
+    if (!shm_view_) {
+      throw std::runtime_error("Shared-memory view is not configured");
+    }
+    return *shm_view_;
+  }
+
+  template<typename T>
+  const ShmKeyDescriptor & verifyWritableShmKey(const std::string & key) const
+  {
+    const auto & descriptor = verifyShmKey<T>(key);
+    if (descriptor.access != ShmAccess::ReadWrite) {
+      throw std::runtime_error("Shared-memory key '" + key + "' is read-only");
+    }
+    return descriptor;
+  }
+
   rclcpp::QoS portQos(const std::string & direction, const std::string & port_name)
   {
     const auto reliability = getParameter<std::string>(
@@ -442,6 +616,7 @@ protected:
   }
 
   bool active_{false};
+  std::unique_ptr<component_shm::ShmView> shm_view_;
   std::unique_ptr<filter_component_synchronizer::FilterComponentSynchronizer> synchronizer_;
   std::unordered_map<std::string, std::unique_ptr<PublisherConcept>> publishers_;
 };

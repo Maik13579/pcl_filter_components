@@ -11,6 +11,7 @@ from filter_component_editor.filter_discovery import (
     discover_filter_plugins,
     load_filter_plugin_defaults,
     parse_filter_plugin_xml,
+    parse_shm_keys_metadata,
 )
 
 
@@ -24,6 +25,18 @@ def test_filter_export_defaults_to_normal_filter_kind() -> None:
     assert export.kind == "filter"
     assert export.chain_data_type == ""
     assert export.implementation == "cpp"
+    assert export.shm_keys == ""
+
+
+def test_parse_shm_keys_metadata_keeps_cpp_namespace_colons() -> None:
+    keys = parse_shm_keys_metadata(
+        "global_map:my_pkg::Map:rw;pose_cache:std::vector<geometry_msgs::msg::Pose>:r"
+    )
+
+    assert [(key.name, key.type_name, key.access) for key in keys] == [
+        ("global_map", "my_pkg::Map", "rw"),
+        ("pose_cache", "std::vector<geometry_msgs::msg::Pose>", "r"),
+    ]
 
 
 def test_filter_export_supports_python_filters() -> None:

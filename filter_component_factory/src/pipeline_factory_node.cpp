@@ -269,6 +269,9 @@ std::vector<rclcpp::Parameter> PipelineFactoryNode::parametersForNode(const Pipe
   for (const auto & [name, value] : node.sync) {
     parameters.push_back(parameterFromString("sync." + name, value));
   }
+  for (const auto & [key, value] : node.shm_remappings) {
+    parameters.push_back(rclcpp::Parameter{"shm_key." + key, value});
+  }
 
   return parameters;
 }

@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake REQUIRED)
+find_package(component_shm REQUIRED)
 find_package(filter_component_synchronizer REQUIRED)
 find_package(filters REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -25,6 +26,7 @@ if(BUILD_TESTING)
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   )
   ament_target_dependencies(test_filter_chain_component
+    component_shm
     filter_component_synchronizer
     filters
     rclcpp
@@ -35,12 +37,31 @@ if(BUILD_TESTING)
     ENVIRONMENT
       "RMW_IMPLEMENTATION=rmw_fastrtps_cpp;ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST;ROS_LOG_DIR=/tmp/filter_component_base_test_logs"
   )
+
+  ament_add_gtest(test_filter_component_shm test/test_filter_component_shm.cpp)
+  target_include_directories(test_filter_component_shm PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  )
+  ament_target_dependencies(test_filter_component_shm
+    component_shm
+    filter_component_synchronizer
+    filters
+    rclcpp
+    rclcpp_lifecycle
+  )
+  set_tests_properties(test_filter_component_shm PROPERTIES
+    ENVIRONMENT
+      "RMW_IMPLEMENTATION=rmw_fastrtps_cpp;ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST;ROS_LOG_DIR=/tmp/filter_component_base_test_logs"
+  )
 endif()
 
 add_library(${PROJECT_NAME} INTERFACE)
 target_include_directories(${PROJECT_NAME} INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(${PROJECT_NAME} INTERFACE
+  component_shm
 )
 install(DIRECTORY include/ DESTINATION include)
 install(TARGETS ${PROJECT_NAME}
@@ -50,6 +71,7 @@ install(TARGETS ${PROJECT_NAME}
 ament_export_include_directories(include)
 ament_export_targets(export_${PROJECT_NAME})
 ament_export_dependencies(
+  component_shm
   filter_component_synchronizer
   filters
   rclcpp

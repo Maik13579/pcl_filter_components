@@ -41,6 +41,38 @@ The factory passes sync entries through as `sync.mode`, `sync.queue_size`, and
 `sync.max_interval` parameters for components that declare more than one input
 port. Removed `sync.policy` graphs are rejected during validation.
 
+## Shared-Memory Key Remaps
+
+C++ filter metadata may declare shared-memory keys with a flat `shm_keys`
+string:
+
+```yaml
+shm_keys: global_map:my_pkg::Map:rw;pose_cache:std::vector<geometry_msgs::msg::Pose>:r
+```
+
+Each entry is parsed by the editor as `key:type:access` using the first and last
+colon, so C++ namespace separators inside the type are preserved. Supported
+access values are `r` and `rw`.
+
+Saved per-node remaps live under a dedicated `shm` section:
+
+```yaml
+shm:
+  remappings:
+    global_map: slam/global_map
+    pose_cache: pose_cache
+```
+
+When loading a C++ filter node, the factory converts those remaps into component
+parameter overrides:
+
+```yaml
+shm_key.global_map: slam/global_map
+shm_key.pose_cache: pose_cache
+```
+
+Python filter runtime support ignores shared-memory metadata in this version.
+
 Filter edges must use declared port names. Topic-node ports such as `in` and
 `out` remain graph endpoint labels.
 

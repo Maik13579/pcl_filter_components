@@ -59,6 +59,7 @@ if(BUILD_TESTING)
   rclcpp_components_register_nodes(test_filter_components
     "filter_component_factory::CropBoxXYZIComponent"
     "filter_component_factory::PointCloudMergerXYZIComponent"
+    "filter_component_factory::ShmKeysComponent"
     "filter_component_factory::VoxelGridXYZIComponent"
   )
   install(TARGETS test_filter_components

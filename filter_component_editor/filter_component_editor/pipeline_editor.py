@@ -36,7 +36,12 @@ from python_qt_binding.QtWidgets import (
 )
 from qt_gui.plugin import Plugin
 
-from filter_component_editor.filter_discovery import FilterExport, FilterPluginExport, discover_filters
+from filter_component_editor.filter_discovery import (
+    FilterExport,
+    FilterPluginExport,
+    discover_filters,
+    parse_shm_keys_metadata,
+)
 from filter_component_editor.items import EdgeHandleItem, EdgeItem, NodeItem
 from filter_component_editor.parameter_discovery import ComponentParameterDiscovery
 from filter_component_editor.pipeline_graph import Edge, Graph, Node, PortRef, load_graph, save_graph
@@ -161,11 +166,21 @@ class PipelineEditor(Plugin):
         self.scene.setSceneRect(QRectF(-2000, -1200, 4000, 2400))
         self.scene.setBackgroundBrush(self.theme_color("base"))
         self.view = PipelineView(self.scene, self)
+        inventory_widget = QWidget()
+        inventory_layout = QVBoxLayout(inventory_widget)
+        inventory_layout.addWidget(QLabel("Shared Memory Keys"))
+        self.shm_inventory = QTreeWidget()
+        self.shm_inventory.setColumnCount(3)
+        self.shm_inventory.setHeaderLabels(["Key", "Type", "Filters"])
+        inventory_layout.addWidget(self.shm_inventory, 1)
+        self.shm_inventory.itemClicked.connect(self._select_shm_inventory_item)
         splitter.addWidget(side_widget)
         splitter.addWidget(self.view)
+        splitter.addWidget(inventory_widget)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([260, 900])
+        splitter.setStretchFactor(2, 0)
+        splitter.setSizes([260, 900, 260])
 
         self.top_down_toggle.toggled.connect(self._set_top_down_mode)
         self.topic_visibility_toggle.toggled.connect(self._set_topic_visibility)
@@ -559,10 +574,12 @@ class PipelineEditor(Plugin):
                 output_type=export.output_type,
                 input_ports=export.input_ports,
                 output_ports=export.output_ports,
+                shm_keys=getattr(export, "shm_keys", ""),
                 parameters=metadata.defaults,
                 inputs=self._default_port_configs(export.input_ports or export.input_type, False),
                 outputs=self._default_port_configs(export.output_ports or export.output_type, True),
                 sync=self._default_sync() if self._has_multiple_input_types(export.input_ports or export.input_type) else {},
+                shm=self._default_shm_config(getattr(export, "shm_keys", "")),
                 position={"x": x, "y": y},
             )
         )
@@ -636,6 +653,7 @@ class PipelineEditor(Plugin):
             output_type=node.output_type,
             input_ports=node.input_ports,
             output_ports=node.output_ports,
+            shm_keys=node.shm_keys,
         )
         if self._is_filter_chain(node) and self._chain_entries(node):
             metadata = self.parameter_discovery.parameters_for_configured_component(
@@ -1755,6 +1773,7 @@ class PipelineEditor(Plugin):
         input_qos_widgets: dict[str, dict[str, QLineEdit | QComboBox]] = {}
         output_qos_widgets: dict[str, dict[str, QLineEdit | QComboBox]] = {}
         sync_widgets: dict[str, QLineEdit | QComboBox] = {}
+        shm_widgets: dict[str, QLineEdit] = {}
         if node.type == "filter":
             try:
                 self._refresh_filter_parameters_for_dialog(node)
@@ -1794,6 +1813,7 @@ class PipelineEditor(Plugin):
             parameter_widgets = self._add_parameters_tab(tabs, dialog, node, parameter_refreshers)
             input_qos_widgets = self._add_port_tab(tabs, dialog, node, False)
             output_qos_widgets = self._add_port_tab(tabs, dialog, node, True)
+            shm_widgets = self._add_shm_tab(tabs, dialog, node)
             if self._filter_has_multiple_inputs(node):
                 sync = QWidget(dialog)
                 sync_form = QFormLayout(sync)
@@ -1866,6 +1886,7 @@ class PipelineEditor(Plugin):
                         }
                     inputs = self._collect_port_qos(node.inputs, input_qos_widgets)
                     outputs = self._collect_port_qos(node.outputs, output_qos_widgets)
+                    shm = self._collect_shm_remappings(node, shm_widgets)
                 except ValueError as error:
                     QMessageBox.critical(self.widget, "Invalid Value", str(error))
                     continue
@@ -1875,6 +1896,7 @@ class PipelineEditor(Plugin):
                 node.parameters = parameters
                 if sync_widgets:
                     node.sync = sync
+                node.shm = shm
                 node.inputs = inputs
                 node.outputs = outputs
             elif topic_edit is not None:
@@ -2046,11 +2068,12 @@ class PipelineEditor(Plugin):
         def rebuild() -> None:
             clear()
             parameter_widgets.clear()
-            if node.parameters:
+            editable_parameters = self._editable_filter_parameters(node)
+            if editable_parameters:
                 parameter_widgets.update(self._populate_parameter_tree(
                     dialog,
                     parameters_tree,
-                    node.parameters,
+                    editable_parameters,
                     lambda key: self._parameter_description(node, key),
                 ))
             else:
@@ -2062,6 +2085,51 @@ class PipelineEditor(Plugin):
         parameters_scroll.setWidget(parameters)
         tabs.addTab(parameters_scroll, "Params")
         return parameter_widgets
+
+    def _editable_filter_parameters(self, node: Node) -> dict[str, object]:
+        return {
+            key: value
+            for key, value in node.parameters.items()
+            if not key.startswith(("inputs.", "outputs.", "sync.", "shm_key."))
+        }
+
+    def _add_shm_tab(self, tabs: QTabWidget, dialog: QDialog, node: Node) -> dict[str, QLineEdit]:
+        shm_keys = parse_shm_keys_metadata(node.shm_keys)
+        if not shm_keys:
+            return {}
+        if not node.shm:
+            node.shm = self._default_shm_config(node.shm_keys)
+        widgets: dict[str, QLineEdit] = {}
+        scroll = QScrollArea(dialog)
+        scroll.setWidgetResizable(True)
+        page = QWidget(scroll)
+        form = QFormLayout(page)
+        remappings = self._shm_remappings(node)
+        for key in shm_keys:
+            field = QLineEdit(str(remappings.get(key.name, key.name)), dialog)
+            field.setToolTip(f"{key.name} [{key.type_name}, {key.access}]")
+            form.addRow("Key", self._readonly_field(key.name))
+            form.addRow("Type", self._readonly_field(key.type_name))
+            form.addRow("Access", self._readonly_field("Read/write" if key.access == "rw" else "Read-only"))
+            form.addRow("Remap", field)
+            widgets[key.name] = field
+            line = QFrame(dialog)
+            line.setFrameShape(QFrame.HLine)
+            line.setFrameShadow(QFrame.Sunken)
+            form.addRow(line)
+        scroll.setWidget(page)
+        tabs.addTab(scroll, "Shm")
+        return widgets
+
+    def _collect_shm_remappings(self, node: Node, widgets: dict[str, QLineEdit]) -> dict[str, object]:
+        if not widgets:
+            return node.shm
+        return {
+            "remappings": {
+                key: widget.text().strip() or key
+                for key, widget in widgets.items()
+            }
+        }
 
     def _populate_parameter_tree(
         self,
@@ -2500,6 +2568,78 @@ class PipelineEditor(Plugin):
     def _default_sync(self) -> dict[str, object]:
         return {"mode": "receipt_time", "queue_size": 10, "max_interval": 0.05}
 
+    def _default_shm_config(self, shm_keys: str) -> dict[str, object]:
+        remappings = {key.name: key.name for key in parse_shm_keys_metadata(shm_keys)}
+        return {"remappings": remappings} if remappings else {}
+
+    def _shm_remappings(self, node: Node) -> dict[str, str]:
+        remappings = node.shm.get("remappings", {}) if isinstance(node.shm, dict) else {}
+        return dict(remappings) if isinstance(remappings, dict) else {}
+
+    def _effective_shm_remapping(self, node: Node, key_name: str) -> str:
+        return str(self._shm_remappings(node).get(key_name, key_name))
+
+    def _shm_inventory_entries(self) -> list[dict[str, object]]:
+        grouped: dict[str, dict[str, object]] = {}
+        for node in self.graph.nodes:
+            if node.type != "filter":
+                continue
+            for key in parse_shm_keys_metadata(node.shm_keys):
+                effective_key = self._effective_shm_remapping(node, key.name)
+                entry = grouped.setdefault(
+                    effective_key,
+                    {"key": effective_key, "types": set(), "users": [], "conflict": False},
+                )
+                entry["types"].add(key.type_name)
+                entry["users"].append(
+                    {
+                        "node_id": node.id,
+                        "key": key.name,
+                        "type_name": key.type_name,
+                        "access": key.access,
+                    }
+                )
+        entries = []
+        for entry in grouped.values():
+            types = sorted(entry["types"])
+            users = entry["users"]
+            entries.append(
+                {
+                    "key": entry["key"],
+                    "type_name": ", ".join(types),
+                    "filters": ", ".join(sorted(user["node_id"] for user in users)),
+                    "node_ids": sorted({user["node_id"] for user in users}),
+                    "conflict": len(types) > 1,
+                    "users": users,
+                }
+            )
+        return sorted(entries, key=lambda item: str(item["key"]))
+
+    def _refresh_shm_inventory(self) -> None:
+        inventory = getattr(self, "shm_inventory", None)
+        if inventory is None:
+            return
+        inventory.clear()
+        for entry in self._shm_inventory_entries():
+            item = QTreeWidgetItem([
+                str(entry["key"]),
+                str(entry["type_name"]),
+                str(entry["filters"]),
+            ])
+            item.setData(0, Qt.UserRole, entry["node_ids"])
+            if entry["conflict"]:
+                item.setForeground(0, QColor("#c62828"))
+                item.setForeground(1, QColor("#c62828"))
+                item.setForeground(2, QColor("#c62828"))
+            inventory.addTopLevelItem(item)
+        for index in range(3):
+            inventory.resizeColumnToContents(index)
+
+    def _select_shm_inventory_item(self, item, _column: int) -> None:
+        node_ids = item.data(0, Qt.UserRole) or []
+        for node_item in self.items_by_id.values():
+            node_item.setSelected(node_item.node.id in node_ids)
+
     def _rename_node(self, node: Node, new_id: str) -> bool:
         if not new_id:
             QMessageBox.critical(self.widget, "Invalid Name", "Name must not be empty.")
@@ -2566,10 +2706,12 @@ class PipelineEditor(Plugin):
         data["filter"] = node.filter
         data["parameters"] = node.parameters
         data["sync"] = node.sync
+        data["shm"] = node.shm
         return data
 
     def _sync_live_pipeline(self) -> None:
         try:
+            self._refresh_shm_inventory()
             desired = self._live_component_specs()
             python_desired = self._live_python_component_specs()
             self.graph.validate(message_type_by_logical=self.message_type_by_logical)
@@ -2586,6 +2728,7 @@ class PipelineEditor(Plugin):
                 )
             self.last_live_runtime_error = ""
         except Exception as error:
+            self._refresh_shm_inventory()
             message = str(error)
             self.status.setText(f"Live pipeline error: {message}")
             if message != self.last_live_runtime_error:
@@ -2663,6 +2806,9 @@ class PipelineEditor(Plugin):
         for key, value in node.sync.items():
             if self._filter_has_multiple_inputs(node):
                 parameters[f"sync.{key}"] = value
+        if node.implementation != "python":
+            for key in parse_shm_keys_metadata(node.shm_keys):
+                parameters[f"shm_key.{key.name}"] = self._effective_shm_remapping(node, key.name)
         return parameters
 
     def _sanitize_filter_parameters(self, node: Node) -> None:
@@ -2675,7 +2821,11 @@ class PipelineEditor(Plugin):
         node.parameters = {
             key: value
             for key, value in node.parameters.items()
-            if key in defaults or (self._is_filter_chain(node) and self._is_chain_parameter_key(key))
+            if (
+                key in defaults
+                and not key.startswith(("inputs.", "outputs.", "sync.", "shm_key."))
+            )
+            or (self._is_filter_chain(node) and self._is_chain_parameter_key(key))
         }
 
     def _migrate_legacy_sync_parameters(self, node: Node) -> None:
@@ -2755,6 +2905,7 @@ class PipelineEditor(Plugin):
             )
             node.parameters = metadata.defaults
             self._restore_filter_chain_parameters(node, old_parameters)
+            self._sanitize_filter_parameters(node)
             component_class = self._component_class_for_node(node)
             self.parameter_descriptions[component_class] = metadata.descriptions
             self.parameter_defaults_by_component[self._component_cache_key(node.package, node.filter, component_class)] = metadata.defaults

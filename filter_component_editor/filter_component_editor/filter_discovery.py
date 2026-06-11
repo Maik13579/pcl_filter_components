@@ -11,6 +11,13 @@ import yaml
 
 
 @dataclass(frozen=True)
+class ShmKeyExport:
+    name: str
+    type_name: str
+    access: str
+
+
+@dataclass(frozen=True)
 class FilterExport:
     package: str
     filter: str
@@ -22,6 +29,7 @@ class FilterExport:
     output_type: str = ""
     input_ports: str = ""
     output_ports: str = ""
+    shm_keys: str = ""
     kind: str = "filter"
     chain_data_type: str = ""
 
@@ -76,7 +84,7 @@ def discover_filters() -> DiscoveryResult:
 
         registered_components = _component_classes(package, prefix)
         package_filters: list[str] = []
-        filter_types: dict[str, tuple[str, str, str, str, str, str]] = {}
+        filter_types: dict[str, tuple[str, str, str, str, str, str, str]] = {}
         for export in root.findall("export"):
             for item in export.findall("filter_component"):
                 point_type = item.attrib.get("type", "")
@@ -97,6 +105,7 @@ def discover_filters() -> DiscoveryResult:
                         item.attrib.get("output", ""),
                         item.attrib.get("input_ports", ""),
                         item.attrib.get("output_ports", ""),
+                        item.attrib.get("shm_keys", ""),
                         item.attrib.get("kind", "filter") or "filter",
                         item.attrib.get("chain_data_type", ""),
                     )
@@ -131,7 +140,9 @@ def discover_filters() -> DiscoveryResult:
             component_class = f"{package}::{filter_name}Component"
             if component_class not in registered_components:
                 continue
-            input_type, output_type, input_ports, output_ports, kind, chain_data_type = filter_types[filter_name]
+            input_type, output_type, input_ports, output_ports, shm_keys, kind, chain_data_type = filter_types[
+                filter_name
+            ]
             result.filters.append(
                 FilterExport(
                     package=package,
@@ -141,6 +152,7 @@ def discover_filters() -> DiscoveryResult:
                     output_type=output_type,
                     input_ports=input_ports,
                     output_ports=output_ports,
+                    shm_keys=shm_keys,
                     kind=kind,
                     chain_data_type=chain_data_type,
                 )
@@ -165,6 +177,24 @@ def _deduplicated_type_exports(types: list[TypeExport]) -> list[TypeExport]:
 
 def _type_export_score(export: TypeExport) -> int:
     return int(bool(export.type_adapter)) + int(bool(export.message_type))
+
+
+def parse_shm_keys_metadata(value: str) -> list[ShmKeyExport]:
+    keys: list[ShmKeyExport] = []
+    for raw_entry in value.split(";"):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        first = entry.find(":")
+        last = entry.rfind(":")
+        if first <= 0 or last <= first:
+            continue
+        name = entry[:first].strip()
+        type_name = entry[first + 1:last].strip()
+        access = entry[last + 1:].strip()
+        if name and type_name and access in {"r", "rw"}:
+            keys.append(ShmKeyExport(name=name, type_name=type_name, access=access))
+    return keys
 
 
 def load_filter_plugin_defaults(defaults_yaml: Path) -> dict[str, dict[str, object]]:

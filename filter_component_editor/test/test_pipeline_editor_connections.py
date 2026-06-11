@@ -83,9 +83,19 @@ def install_editor_dependency_stubs() -> None:
             self.output_type = kwargs.get("output_type", "")
             self.input_ports = kwargs.get("input_ports", "")
             self.output_ports = kwargs.get("output_ports", "")
+            self.shm_keys = kwargs.get("shm_keys", "")
 
     filter_discovery.FilterExport = FilterExport
     filter_discovery.FilterPluginExport = object
+    filter_discovery.parse_shm_keys_metadata = lambda value: [
+        types.SimpleNamespace(
+            name=entry.split(":", 1)[0].strip(),
+            type_name=entry.split(":", 1)[1].rsplit(":", 1)[0].strip(),
+            access=entry.rsplit(":", 1)[1].strip(),
+        )
+        for entry in value.split(";")
+        if entry.strip() and ":" in entry and entry.rsplit(":", 1)[1].strip() in {"r", "rw"}
+    ]
     filter_discovery.discover_filters = lambda: None
     parameter_discovery = types.ModuleType("filter_component_editor.parameter_discovery")
     parameter_discovery.ComponentParameterDiscovery = object
@@ -119,6 +129,7 @@ def input_(node: str, port: str = "") -> PortRef:
 def editor_for(graph: Graph) -> PipelineEditor:
     editor = object.__new__(PipelineEditor)
     editor.graph = graph
+    editor.discovery = types.SimpleNamespace(filters=[])
     editor.parameter_defaults_by_component = {}
     editor.parameter_descriptions = {}
     editor.message_type_by_logical = {
@@ -988,3 +999,68 @@ def test_unconnected_python_filter_is_loaded_live_like_cpp_components() -> None:
         specs["PythonPointCloudPassthrough"]["component_class"]
         == "filter_component_python_examples.passthrough_cloud:PythonPointCloudPassthrough"
     )
+
+
+def test_live_cpp_parameters_include_shm_remaps_and_hide_generated_shm_params() -> None:
+    node = filter_node("ShmFilter")
+    node.shm_keys = "global_map:my_pkg::Map:rw;pose_cache:std::vector<geometry_msgs::msg::Pose>:r"
+    node.shm = {"remappings": {"global_map": "slam/global_map", "pose_cache": "pose_cache"}}
+    node.parameters = {
+        "filter.enabled": True,
+        "shm_key.global_map": "old",
+    }
+    editor = editor_for(Graph(nodes=[node]))
+    editor.parameter_defaults_by_component[node.component_class] = {
+        "filter.enabled": True,
+        "shm_key.global_map": "global_map",
+        "shm_key.pose_cache": "pose_cache",
+    }
+
+    parameters = editor._live_parameters_for_node(node)
+
+    assert parameters["filter.enabled"] is True
+    assert parameters["shm_key.global_map"] == "slam/global_map"
+    assert parameters["shm_key.pose_cache"] == "pose_cache"
+    assert node.parameters == {"filter.enabled": True}
+    assert editor._editable_filter_parameters(node) == {"filter.enabled": True}
+
+
+def test_live_python_parameters_ignore_shm_metadata_for_runtime_v1() -> None:
+    node = filter_node("PyShm")
+    node.implementation = "python"
+    node.python_module = "pkg.filters"
+    node.python_class = "PyShm"
+    node.shm_keys = "global_map:my_pkg::Map:rw"
+    node.shm = {"remappings": {"global_map": "slam/global_map"}}
+    node.parameters = {"filter.enabled": True}
+    editor = editor_for(Graph(nodes=[node]))
+    editor.parameter_defaults_by_component["pkg.filters:PyShm"] = {"filter.enabled": True}
+
+    parameters = editor._live_parameters_for_node(node)
+
+    assert parameters == {"filter.enabled": True}
+
+
+def test_shm_inventory_groups_by_effective_key_and_detects_type_conflicts() -> None:
+    first = filter_node("Writer")
+    first.shm_keys = "global_map:my_pkg::Map:rw"
+    first.shm = {"remappings": {"global_map": "shared/map"}}
+    second = filter_node("Reader")
+    second.shm_keys = "map:other_pkg::Map:r"
+    second.shm = {"remappings": {"map": "shared/map"}}
+    editor = editor_for(Graph(nodes=[first, second]))
+
+    entries = editor._shm_inventory_entries()
+
+    assert len(entries) == 1
+    assert entries[0]["key"] == "shared/map"
+    assert entries[0]["conflict"] is True
+    assert entries[0]["node_ids"] == ["Reader", "Writer"]
+
+
+def test_default_shm_config_uses_key_names_as_remaps() -> None:
+    editor = editor_for(Graph())
+
+    assert editor._default_shm_config("global_map:my_pkg::Map:rw") == {
+        "remappings": {"global_map": "global_map"}
+    }

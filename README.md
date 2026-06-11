@@ -19,6 +19,7 @@ leave, or connect parts of the graph. Topic nodes are not loaded as components.
 - [Packages](#packages)
 - [ROS Filter Chains](#ros-filter-chains)
 - [Architecture](#architecture)
+- [C++ In-Process Shared Memory](#c-in-process-shared-memory)
 - [Python Support](#python-support)
   - [Python Component Container](#python-component-container)
 - [Editor](#editor)
@@ -47,6 +48,8 @@ filters, topic types, and component classes.
   unique-pointer synchronizer for filters with named input ports.
 - [filter_component_base](filter_component_base/README.md): lifecycle component base classes
   and descriptor helpers for declaring ports, parameters, QoS, and sync.
+- [component_shm](https://github.com/Maik13579/component_shm): in-process shared-memory registry and
+  per-component remapping views for C++ components.
 - [filter_component_factory](filter_component_factory/README.md): saved graph interpreter
   that loads filter nodes and binds their ports to topics.
 - [filter_component_synchronizer_py](filter_component_synchronizer_py/README.md): Python
@@ -113,6 +116,19 @@ They can also export logical type aliases:
   type_adapter="example_package::ros::ExampleAdapter"
   message_type="example_interfaces/msg/Example"/>
 ```
+
+## C++ In-Process Shared Memory
+
+C++ filters can use in-process shared memory through the
+[`component_shm`](https://github.com/Maik13579/component_shm) package. `filter_component_base`
+lets filters declare typed shared-memory keys, exposes checked helper functions
+for const and mutable access, and supports per-filter remapping from local key
+names to process-wide shared keys.
+
+Pipeline metadata and YAML can remap local filter keys such as `global_map` to
+effective process keys such as `slam/global_map`. The editor shows declared
+keys in a Shm tab and maintains a shared-memory key inventory for C++ filters.
+Python runtime support does not use `component_shm` in this version.
 
 ## Python Support
 

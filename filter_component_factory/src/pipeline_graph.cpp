@@ -297,6 +297,7 @@ PipelineGraph loadPipelineGraph(const std::string & path)
     node.output_type = optionalString(item, "output_type");
     node.input_ports = optionalString(item, "input_ports");
     node.output_ports = optionalString(item, "output_ports");
+    node.shm_keys = optionalString(item, "shm_keys");
     node.topic = optionalString(item, "topic");
     if (item["id"]) {
       node.id = requireString(item, "id");
@@ -310,6 +311,9 @@ PipelineGraph loadPipelineGraph(const std::string & path)
     node.inputs = portConfigMap(item["inputs"]);
     node.outputs = portConfigMap(item["outputs"]);
     node.sync = stringMap(item["sync"]);
+    if (item["shm"] && item["shm"].IsMap()) {
+      node.shm_remappings = stringMap(item["shm"]["remappings"]);
+    }
     if (item["position"] && item["position"].IsMap()) {
       node.x = item["position"]["x"] ? item["position"]["x"].as<double>() : 0.0;
       node.y = item["position"]["y"] ? item["position"]["y"].as<double>() : 0.0;

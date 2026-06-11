@@ -37,10 +37,12 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
                 component_class="test_filter_components::VoxelGridXYZIComponent",
                 input_type="PointXYZI",
                 output_type="PointXYZI",
+                shm_keys="global_map:my_pkg::Map:rw;pose_cache:std::vector<geometry_msgs::msg::Pose>:r",
                 parameters={"filter.leaf_size_x": 0.1},
                 inputs={"cloud": {"qos": {"reliability": "reliable", "history": "keep_last", "depth": 8}}},
                 outputs={"cloud": {"qos": {"durability": "transient_local"}}},
                 sync={"mode": "receipt_time", "max_interval": 0.1},
+                shm={"remappings": {"global_map": "slam/global_map", "pose_cache": "pose_cache"}},
             ),
             Node(
                 id="/filter_pipeline/voxel_to_output",
@@ -69,6 +71,11 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
     assert "name: VoxelGridXYZI_1" in path.read_text(encoding="utf-8")
     assert "inputs:" in path.read_text(encoding="utf-8")
     assert "outputs:" in path.read_text(encoding="utf-8")
+    assert "shm_keys: global_map:my_pkg::Map:rw;pose_cache:std::vector<geometry_msgs::msg::Pose>:r" in path.read_text(
+        encoding="utf-8"
+    )
+    assert "shm:" in path.read_text(encoding="utf-8")
+    assert "global_map: slam/global_map" in path.read_text(encoding="utf-8")
     assert "compatibility:" not in path.read_text(encoding="utf-8")
     assert "transient_local" in path.read_text(encoding="utf-8")
     assert "qos:\n      depth: 7" not in path.read_text(encoding="utf-8")
@@ -85,6 +92,9 @@ def test_graph_round_trip_preserves_editor_fields(tmp_path: Path) -> None:
     assert loaded.nodes[1].outputs["cloud"]["qos"]["durability"] == "transient_local"
     assert loaded.nodes[1].sync["mode"] == "receipt_time"
     assert loaded.nodes[1].sync["max_interval"] == 0.1
+    assert loaded.nodes[1].shm_keys == "global_map:my_pkg::Map:rw;pose_cache:std::vector<geometry_msgs::msg::Pose>:r"
+    assert loaded.nodes[1].shm["remappings"]["global_map"] == "slam/global_map"
+    assert loaded.nodes[1].shm["remappings"]["pose_cache"] == "pose_cache"
     assert loaded.nodes[0].position == {"x": 10.0, "y": 20.0}
     assert loaded.editor == {"orientation": "top_down", "show_filters": False}
     assert loaded.nodes[2].topic == "/filter_pipeline/voxel_to_output"

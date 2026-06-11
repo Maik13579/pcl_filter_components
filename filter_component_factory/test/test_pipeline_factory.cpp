@@ -98,6 +98,30 @@ edges:
   return path;
 }
 
+std::string writeShmPipeline()
+{
+  const auto path = std::string{"/tmp/filter_components_shm_factory_test.yaml"};
+  std::ofstream stream{path};
+  stream << R"(
+version: 2
+nodes:
+  - type: filter
+    name: ShmKeys_1
+    package: filter_component_factory
+    filter: ShmKeys
+    component_class: filter_component_factory::ShmKeysComponent
+    input_type: PointXYZI
+    output_type: PointXYZI
+    shm_keys: global_map:my_pkg::Map:rw;pose_cache:std::vector<geometry_msgs::msg::Pose>:r
+    shm:
+      remappings:
+        global_map: slam/global_map
+        pose_cache: pose_cache
+edges: []
+)";
+  return path;
+}
+
 void expectFactoryLoadsPipeline(const std::string & pipeline_file)
 {
   auto context = std::make_shared<rclcpp::Context>();
@@ -146,6 +170,18 @@ TEST(PipelineFactoryNode, LoadsAndControlsSingleFilterPipeline)
 TEST(PipelineFactoryNode, LoadsAndControlsMergerPipeline)
 {
   expectFactoryLoadsPipeline(writeMergerPipeline());
+}
+
+TEST(PipelineFactoryNode, LoadsShmRemappingsAsParameterOverrides)
+{
+  const auto path = writeShmPipeline();
+  const auto graph = filter_component_factory::pipeline::loadPipelineGraph(path);
+
+  ASSERT_EQ(graph.nodes.size(), 1U);
+  EXPECT_EQ(graph.nodes[0].shm_remappings.at("global_map"), "slam/global_map");
+  EXPECT_EQ(graph.nodes[0].shm_remappings.at("pose_cache"), "pose_cache");
+
+  expectFactoryLoadsPipeline(path);
 }
 
 TEST(PipelineFactoryNode, LoadsInstalledExamplePipeline)

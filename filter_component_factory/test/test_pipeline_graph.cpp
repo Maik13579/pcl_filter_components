@@ -36,6 +36,7 @@ nodes:
     component_class: test_filter_components::VoxelGridXYZIComponent
     input_type: PointXYZI
     output_type: PointXYZI
+    shm_keys: global_map:my_pkg::Map:rw;pose_cache:std::vector<geometry_msgs::msg::Pose>:r
     parameters:
       filter.leaf_size_x: 0.1
     inputs:
@@ -47,6 +48,10 @@ nodes:
     sync:
       mode: receipt_time
       max_interval: 0.1
+    shm:
+      remappings:
+        global_map: slam/global_map
+        pose_cache: pose_cache
   - type: topic
     topic: /filtered
     input_type: PointXYZI
@@ -74,12 +79,17 @@ edges:
   EXPECT_EQ(graph.nodes[1].component_class, "test_filter_components::VoxelGridXYZIComponent");
   EXPECT_EQ(graph.nodes[1].input_type, "PointXYZI");
   EXPECT_EQ(graph.nodes[1].output_type, "PointXYZI");
+  EXPECT_EQ(
+    graph.nodes[1].shm_keys,
+    "global_map:my_pkg::Map:rw;pose_cache:std::vector<geometry_msgs::msg::Pose>:r");
   EXPECT_EQ(graph.nodes[1].parameters.at("filter.leaf_size_x"), "0.1");
   EXPECT_EQ(graph.nodes[1].inputs.at("cloud").at("depth"), "8");
   EXPECT_EQ(graph.nodes[1].inputs.at("cloud").at("reliability"), "reliable");
   EXPECT_EQ(graph.nodes[1].outputs.at("cloud").at("durability"), "transient_local");
   EXPECT_EQ(graph.nodes[1].sync.at("mode"), "receipt_time");
   EXPECT_EQ(graph.nodes[1].sync.at("max_interval"), "0.1");
+  EXPECT_EQ(graph.nodes[1].shm_remappings.at("global_map"), "slam/global_map");
+  EXPECT_EQ(graph.nodes[1].shm_remappings.at("pose_cache"), "pose_cache");
   EXPECT_EQ(graph.nodes[3].topic, "/filter_pipeline/voxel_to_output");
   EXPECT_TRUE(graph.nodes[3].qos.empty());
   EXPECT_DOUBLE_EQ(graph.nodes[3].x, 120.0);
