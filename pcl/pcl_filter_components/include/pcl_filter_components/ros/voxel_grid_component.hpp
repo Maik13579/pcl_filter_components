@@ -10,17 +10,12 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "pcl_filter_components/filters/voxel_grid_filter.hpp"
-#include "filter_component_base/ros/parameter_utils.hpp"
 #include "filter_component_base/ros/filter_component_base.hpp"
 #include "pcl_filter_components_type_adapters/ros/stamped_pcl_type_adapter.hpp"
 
 namespace pcl_filter_components::ros
 {
 
-using filter_component_base::ros::declareParameterIfNotDeclared;
-using filter_component_base::ros::getParameter;
-using filter_component_base::ros::makeFloatingPointRangeParameterDescriptor;
-using filter_component_base::ros::makeParameterDescriptor;
 using filter_component_base::ros::FilterComponentBase;
 
 template <typename PointT>
@@ -41,35 +36,22 @@ public:
       inputPorts(),
       outputPorts())
   {
-    declareParameterIfNotDeclared(
-      *this,
+    this->declareParameter(
       "filter.leaf_size_x",
       0.05,
-      makeFloatingPointRangeParameterDescriptor(
-        "Voxel grid leaf size along the x axis in meters.",
-        1.0e-6,
-        1000.0));
-    declareParameterIfNotDeclared(
-      *this,
+      "Voxel grid leaf size along the x axis in meters.");
+    this->declareParameter(
       "filter.leaf_size_y",
       0.05,
-      makeFloatingPointRangeParameterDescriptor(
-        "Voxel grid leaf size along the y axis in meters.",
-        1.0e-6,
-        1000.0));
-    declareParameterIfNotDeclared(
-      *this,
+      "Voxel grid leaf size along the y axis in meters.");
+    this->declareParameter(
       "filter.leaf_size_z",
       0.05,
-      makeFloatingPointRangeParameterDescriptor(
-        "Voxel grid leaf size along the z axis in meters.",
-        1.0e-6,
-        1000.0));
-    declareParameterIfNotDeclared(
-      *this,
+      "Voxel grid leaf size along the z axis in meters.");
+    this->declareParameter(
       "filter.invert",
       false,
-      makeParameterDescriptor("Return points outside the selected voxel representatives."));
+      "Return points outside the selected voxel representatives.");
   }
 
 protected:
@@ -97,10 +79,10 @@ protected:
   void configure() override
   {
     typename Filter::Params params;
-    params.leaf_size_x = static_cast<float>(getParameter<double>(*this, "filter.leaf_size_x"));
-    params.leaf_size_y = static_cast<float>(getParameter<double>(*this, "filter.leaf_size_y"));
-    params.leaf_size_z = static_cast<float>(getParameter<double>(*this, "filter.leaf_size_z"));
-    params.invert = getParameter<bool>(*this, "filter.invert");
+    params.leaf_size_x = static_cast<float>(this->template getParameter<double>("filter.leaf_size_x"));
+    params.leaf_size_y = static_cast<float>(this->template getParameter<double>("filter.leaf_size_y"));
+    params.leaf_size_z = static_cast<float>(this->template getParameter<double>("filter.leaf_size_z"));
+    params.invert = this->template getParameter<bool>("filter.invert");
     filter_.configure(params);
   }
 

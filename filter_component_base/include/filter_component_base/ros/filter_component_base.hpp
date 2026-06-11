@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -17,12 +18,14 @@
 #include <vector>
 
 #include <component_shm/shm_view.hpp>
+#include <rcl_interfaces/msg/floating_point_range.hpp>
+#include <rcl_interfaces/msg/integer_range.hpp>
+#include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include <rclcpp/create_publisher.hpp>
 #include <lifecycle_msgs/msg/state.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 
-#include "filter_component_base/ros/parameter_utils.hpp"
 #include "filter_component_synchronizer/filter_component_synchronizer.hpp"
 
 namespace filter_component_base::ros
@@ -33,6 +36,21 @@ class FilterComponentBase : public rclcpp_lifecycle::LifecycleNode
 public:
   using CallbackReturn =
     rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
+
+  template <typename T>
+  void declareParameter(
+    const std::string & name,
+    const T & default_value,
+    const std::string & description)
+  {
+    this->declare_parameter<T>(name, default_value, makeParameterDescriptor(description));
+  }
+
+  template <typename T>
+  T getParameter(const std::string & name) const
+  {
+    return this->get_parameter(name).get_value<T>();
+  }
 
   enum class ShmAccess
   {
@@ -195,43 +213,35 @@ public:
     output_ports_.assign(output_ports.begin(), output_ports.end());
     shm_keys_.assign(shm_keys.begin(), shm_keys.end());
     for (const auto & port : input_ports_) {
-      declareParameterIfNotDeclared(
-        *this,
+      declareParameter(
         inputTopicParameterName(port.name),
         defaultPortTopic("input", port.name),
-        makeParameterDescriptor(port.description));
+        port.description);
       declarePortQosParameters("inputs", port);
     }
     for (const auto & port : output_ports_) {
-      declareParameterIfNotDeclared(
-        *this,
+      declareParameter(
         outputTopicParameterName(port.name),
         defaultPortTopic("output", port.name),
-        makeParameterDescriptor(port.description));
+        port.description);
       declarePortQosParameters("outputs", port);
     }
     for (const auto & key : shm_keys_) {
-      declareParameterIfNotDeclared(
-        *this,
+      declareParameter(
         shmKeyParameterName(key.name),
         key.name,
-        makeParameterDescriptor(key.description));
+        key.description);
     }
     if (input_ports_.size() > 1U) {
-      declareParameterIfNotDeclared(
-        *this,
+      declareParameter(
         "sync.mode",
         std::string{"receipt_time"},
-        makeParameterDescriptor(
-          "Input synchronization mode.",
-          "Supported values: receipt_time, latest."));
-      declareParameterIfNotDeclared(
-        *this,
+        "Input synchronization mode.");
+      declareParameterWithDescriptor(
         "sync.queue_size",
         10,
         makeIntegerRangeParameterDescriptor("Maximum unmatched input messages kept per port.", 1, 100000));
-      declareParameterIfNotDeclared(
-        *this,
+      declareParameterWithDescriptor(
         "sync.max_interval",
         0.05,
         makeFloatingPointRangeParameterDescriptor(
@@ -345,11 +355,11 @@ protected:
     auto sync_options = filter_component_synchronizer::SynchronizerOptions{};
     if (input_ports_.size() > 1U) {
       sync_options.mode = filter_component_synchronizer::syncModeFromString(
-        getParameter<std::string>(*this, "sync.mode"));
-      const auto sync_queue_size = getParameter<int>(*this, "sync.queue_size");
+        getParameter<std::string>("sync.mode"));
+      const auto sync_queue_size = getParameter<int>("sync.queue_size");
       sync_options.queue_size = sync_queue_size > 0 ?
         static_cast<size_t>(sync_queue_size) : 1U;
-      sync_options.max_interval = getParameter<double>(*this, "sync.max_interval");
+      sync_options.max_interval = getParameter<double>("sync.max_interval");
     }
     synchronizer_ = std::make_unique<filter_component_synchronizer::FilterComponentSynchronizer>(
       sync_options,
@@ -490,40 +500,36 @@ protected:
     outbound_topics_.clear();
     for (const auto & port : input_ports_) {
       inbound_topics_[port.name] =
-        getParameter<std::string>(*this, inputTopicParameterName(port.name));
+        getParameter<std::string>(inputTopicParameterName(port.name));
     }
     for (const auto & port : output_ports_) {
       outbound_topics_[port.name] =
-        getParameter<std::string>(*this, outputTopicParameterName(port.name));
+        getParameter<std::string>(outputTopicParameterName(port.name));
     }
   }
 
   void declarePortQosParameters(const std::string & direction, const PortDescriptor & port)
   {
-    declareParameterIfNotDeclared(
-      *this,
+    declareParameterWithDescriptor(
       portQosParameterName(direction, port.name, "reliability"),
       port.default_reliability,
       makeParameterDescriptor(
         "QoS reliability for port '" + port.name + "'.",
         "Supported values: best_effort, reliable."));
-    declareParameterIfNotDeclared(
-      *this,
+    declareParameterWithDescriptor(
       portQosParameterName(direction, port.name, "history"),
       port.default_history,
       makeParameterDescriptor(
         "QoS history policy for port '" + port.name + "'.",
         "Supported values: keep_last, keep_all."));
-    declareParameterIfNotDeclared(
-      *this,
+    declareParameterWithDescriptor(
       portQosParameterName(direction, port.name, "depth"),
       port.default_depth,
       makeIntegerRangeParameterDescriptor(
         "QoS history depth for port '" + port.name + "'.",
         1,
         100000));
-    declareParameterIfNotDeclared(
-      *this,
+    declareParameterWithDescriptor(
       portQosParameterName(direction, port.name, "durability"),
       port.default_durability,
       makeParameterDescriptor(
@@ -535,7 +541,7 @@ protected:
   {
     std::unordered_map<std::string, std::string> remappings;
     for (const auto & key : shm_keys_) {
-      remappings[key.name] = getParameter<std::string>(*this, shmKeyParameterName(key.name));
+      remappings[key.name] = getParameter<std::string>(shmKeyParameterName(key.name));
     }
     shm_view_ = std::make_unique<component_shm::ShmView>();
     shm_view_->set_remappings(std::move(remappings));
@@ -594,16 +600,12 @@ protected:
   rclcpp::QoS portQos(const std::string & direction, const std::string & port_name)
   {
     const auto reliability = getParameter<std::string>(
-      *this,
       portQosParameterName(direction, port_name, "reliability"));
     const auto history = getParameter<std::string>(
-      *this,
       portQosParameterName(direction, port_name, "history"));
     const auto depth_value = getParameter<int>(
-      *this,
       portQosParameterName(direction, port_name, "depth"));
     const auto durability = getParameter<std::string>(
-      *this,
       portQosParameterName(direction, port_name, "durability"));
 
     auto qos = rclcpp::QoS(rclcpp::KeepLast(depth_value > 0 ? static_cast<size_t>(depth_value) : 1U));
@@ -633,6 +635,57 @@ protected:
         "Unsupported QoS durability '" + durability + "' for " + direction + "." + port_name);
     }
     return qos;
+  }
+
+  template <typename T>
+  void declareParameterWithDescriptor(
+    const std::string & name,
+    const T & default_value,
+    const rcl_interfaces::msg::ParameterDescriptor & descriptor)
+  {
+    this->declare_parameter<T>(name, default_value, descriptor);
+  }
+
+  static rcl_interfaces::msg::ParameterDescriptor makeParameterDescriptor(
+    const std::string & description,
+    const std::string & additional_constraints = {})
+  {
+    rcl_interfaces::msg::ParameterDescriptor descriptor;
+    descriptor.description = description;
+    descriptor.additional_constraints = additional_constraints;
+    return descriptor;
+  }
+
+  static rcl_interfaces::msg::ParameterDescriptor makeIntegerRangeParameterDescriptor(
+    const std::string & description,
+    std::int64_t from_value,
+    std::int64_t to_value,
+    std::uint64_t step = 1U,
+    const std::string & additional_constraints = {})
+  {
+    auto descriptor = makeParameterDescriptor(description, additional_constraints);
+    rcl_interfaces::msg::IntegerRange range;
+    range.from_value = from_value;
+    range.to_value = to_value;
+    range.step = step;
+    descriptor.integer_range.push_back(range);
+    return descriptor;
+  }
+
+  static rcl_interfaces::msg::ParameterDescriptor makeFloatingPointRangeParameterDescriptor(
+    const std::string & description,
+    double from_value,
+    double to_value,
+    double step = 0.0,
+    const std::string & additional_constraints = {})
+  {
+    auto descriptor = makeParameterDescriptor(description, additional_constraints);
+    rcl_interfaces::msg::FloatingPointRange range;
+    range.from_value = from_value;
+    range.to_value = to_value;
+    range.step = step;
+    descriptor.floating_point_range.push_back(range);
+    return descriptor;
   }
 
   bool active_{false};

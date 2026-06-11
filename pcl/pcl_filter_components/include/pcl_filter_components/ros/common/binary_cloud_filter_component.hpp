@@ -9,7 +9,6 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "filter_component_base/ros/parameter_utils.hpp"
 #include "filter_component_base/ros/filter_component_base.hpp"
 #include "pcl_filter_components/ros/common/single_cloud_filter_component.hpp"
 #include "pcl_filter_components_type_adapters/ros/stamped_pcl_type_adapter.hpp"

@@ -10,17 +10,12 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "pcl_filter_components/filters/crop_box_filter.hpp"
-#include "filter_component_base/ros/parameter_utils.hpp"
 #include "filter_component_base/ros/filter_component_base.hpp"
 #include "pcl_filter_components_type_adapters/ros/stamped_pcl_type_adapter.hpp"
 
 namespace pcl_filter_components::ros
 {
 
-using filter_component_base::ros::declareParameterIfNotDeclared;
-using filter_component_base::ros::getParameter;
-using filter_component_base::ros::makeFloatingPointRangeParameterDescriptor;
-using filter_component_base::ros::makeParameterDescriptor;
 using filter_component_base::ros::FilterComponentBase;
 
 template <typename PointT>
@@ -41,59 +36,34 @@ public:
       inputPorts(),
       outputPorts())
   {
-    declareParameterIfNotDeclared(
-      *this,
+    this->declareParameter(
       "filter.min_x",
       -10.0,
-      makeFloatingPointRangeParameterDescriptor(
-        "Minimum x bound of the crop box in meters.",
-        -1.0e6,
-        1.0e6));
-    declareParameterIfNotDeclared(
-      *this,
+      "Minimum x bound of the crop box in meters.");
+    this->declareParameter(
       "filter.min_y",
       -10.0,
-      makeFloatingPointRangeParameterDescriptor(
-        "Minimum y bound of the crop box in meters.",
-        -1.0e6,
-        1.0e6));
-    declareParameterIfNotDeclared(
-      *this,
+      "Minimum y bound of the crop box in meters.");
+    this->declareParameter(
       "filter.min_z",
       -2.0,
-      makeFloatingPointRangeParameterDescriptor(
-        "Minimum z bound of the crop box in meters.",
-        -1.0e6,
-        1.0e6));
-    declareParameterIfNotDeclared(
-      *this,
+      "Minimum z bound of the crop box in meters.");
+    this->declareParameter(
       "filter.max_x",
       10.0,
-      makeFloatingPointRangeParameterDescriptor(
-        "Maximum x bound of the crop box in meters.",
-        -1.0e6,
-        1.0e6));
-    declareParameterIfNotDeclared(
-      *this,
+      "Maximum x bound of the crop box in meters.");
+    this->declareParameter(
       "filter.max_y",
       10.0,
-      makeFloatingPointRangeParameterDescriptor(
-        "Maximum y bound of the crop box in meters.",
-        -1.0e6,
-        1.0e6));
-    declareParameterIfNotDeclared(
-      *this,
+      "Maximum y bound of the crop box in meters.");
+    this->declareParameter(
       "filter.max_z",
       3.0,
-      makeFloatingPointRangeParameterDescriptor(
-        "Maximum z bound of the crop box in meters.",
-        -1.0e6,
-        1.0e6));
-    declareParameterIfNotDeclared(
-      *this,
+      "Maximum z bound of the crop box in meters.");
+    this->declareParameter(
       "filter.invert",
       false,
-      makeParameterDescriptor("Keep points outside the crop box when enabled."));
+      "Keep points outside the crop box when enabled.");
   }
 
 protected:
@@ -121,13 +91,13 @@ protected:
   void configure() override
   {
     typename Filter::Params params;
-    params.min_x = getParameter<double>(*this, "filter.min_x");
-    params.min_y = getParameter<double>(*this, "filter.min_y");
-    params.min_z = getParameter<double>(*this, "filter.min_z");
-    params.max_x = getParameter<double>(*this, "filter.max_x");
-    params.max_y = getParameter<double>(*this, "filter.max_y");
-    params.max_z = getParameter<double>(*this, "filter.max_z");
-    params.invert = getParameter<bool>(*this, "filter.invert");
+    params.min_x = this->template getParameter<double>("filter.min_x");
+    params.min_y = this->template getParameter<double>("filter.min_y");
+    params.min_z = this->template getParameter<double>("filter.min_z");
+    params.max_x = this->template getParameter<double>("filter.max_x");
+    params.max_y = this->template getParameter<double>("filter.max_y");
+    params.max_z = this->template getParameter<double>("filter.max_z");
+    params.invert = this->template getParameter<bool>("filter.invert");
     filter_.configure(params);
   }
 

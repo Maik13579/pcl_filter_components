@@ -11,17 +11,12 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "pcl_filter_components/filters/passthrough_filter.hpp"
-#include "filter_component_base/ros/parameter_utils.hpp"
 #include "filter_component_base/ros/filter_component_base.hpp"
 #include "pcl_filter_components_type_adapters/ros/stamped_pcl_type_adapter.hpp"
 
 namespace pcl_filter_components::ros
 {
 
-using filter_component_base::ros::declareParameterIfNotDeclared;
-using filter_component_base::ros::getParameter;
-using filter_component_base::ros::makeFloatingPointRangeParameterDescriptor;
-using filter_component_base::ros::makeParameterDescriptor;
 using filter_component_base::ros::FilterComponentBase;
 
 template <typename PointT>
@@ -42,34 +37,22 @@ public:
       inputPorts(),
       outputPorts())
   {
-    declareParameterIfNotDeclared(
-      *this,
+    this->declareParameter(
       "filter.field_name",
       std::string{"z"},
-      makeParameterDescriptor(
-        "Point field used for pass-through filtering.",
-        "Use a scalar field present in the input point type, such as x, y, z, or intensity."));
-    declareParameterIfNotDeclared(
-      *this,
+      "Point field used for pass-through filtering.");
+    this->declareParameter(
       "filter.min_value",
       -1.0,
-      makeFloatingPointRangeParameterDescriptor(
-        "Inclusive lower limit for the selected point field.",
-        -1.0e9,
-        1.0e9));
-    declareParameterIfNotDeclared(
-      *this,
+      "Inclusive lower limit for the selected point field.");
+    this->declareParameter(
       "filter.max_value",
       2.0,
-      makeFloatingPointRangeParameterDescriptor(
-        "Inclusive upper limit for the selected point field.",
-        -1.0e9,
-        1.0e9));
-    declareParameterIfNotDeclared(
-      *this,
+      "Inclusive upper limit for the selected point field.");
+    this->declareParameter(
       "filter.invert",
       false,
-      makeParameterDescriptor("Keep points outside the pass-through range when enabled."));
+      "Keep points outside the pass-through range when enabled.");
   }
 
 protected:
@@ -97,10 +80,10 @@ protected:
   void configure() override
   {
     typename Filter::Params params;
-    params.field_name = getParameter<std::string>(*this, "filter.field_name");
-    params.min_value = getParameter<double>(*this, "filter.min_value");
-    params.max_value = getParameter<double>(*this, "filter.max_value");
-    params.invert = getParameter<bool>(*this, "filter.invert");
+    params.field_name = this->template getParameter<std::string>("filter.field_name");
+    params.min_value = this->template getParameter<double>("filter.min_value");
+    params.max_value = this->template getParameter<double>("filter.max_value");
+    params.invert = this->template getParameter<bool>("filter.invert");
     filter_.configure(params);
   }
 
