@@ -37,50 +37,54 @@ A normal node-based point-cloud pipeline therefore repeats conversion work at
 every step:
 
 ```mermaid
-flowchart TB
-  subgraph classic["Classic ROS node pipeline"]
-    direction LR
-    c_in["/points<br/><small>PointCloud2</small>"]:::ros
-    c_f1["filter 1<br/><small>PointCloud2 -> PCL -> process -> PointCloud2</small>"]:::convert
-    c_f2["filter 2<br/><small>PointCloud2 -> PCL -> process -> PointCloud2</small>"]:::convert
-    c_out["/filtered_points<br/><small>PointCloud2</small>"]:::ros
+flowchart LR
+  input["/points<br/><small>PointCloud2</small>"]:::ros
+  filter1["filter 1<br/><small>PointCloud2 -> PCL<br/>process<br/>PCL -> PointCloud2</small>"]:::convert
+  filter2["filter 2<br/><small>PointCloud2 -> PCL<br/>process<br/>PCL -> PointCloud2</small>"]:::convert
+  output["/filtered_points<br/><small>PointCloud2</small>"]:::ros
 
-    c_in --> c_f1 --> c_f2 --> c_out
-  end
-
-  subgraph adapted["Filter component pipeline"]
-    direction LR
-    a_in["/points<br/><small>PointCloud2</small>"]:::ros
-    a_adapter_in["type adapter<br/><small>convert at ROS boundary</small>"]:::adapter
-    a_f1["filter 1 callback<br/><small>owns unique_ptr&lt;PCL cloud&gt;</small>"]:::filter
-    a_f2["filter 2 callback<br/><small>owns unique_ptr&lt;PCL cloud&gt;</small>"]:::filter
-    a_adapter_out["type adapter<br/><small>convert at ROS boundary</small>"]:::adapter
-    a_out["/filtered_points<br/><small>PointCloud2</small>"]:::ros
-
-    a_in --> a_adapter_in --> a_f1
-    a_f1 == "intra-process move" ==> a_f2
-    a_f2 --> a_adapter_out --> a_out
-  end
-
-  shm[("component_shm<br/><small>shared_ptr maps, caches, calibration</small>")]:::shm
-  debug["RViz / rosbag / external nodes<br/><small>normal ROS compatibility</small>"]:::debug
-
-  shm -. "remapped shared keys" .-> a_f1
-  shm -. "remapped shared keys" .-> a_f2
-  a_out -. "PointCloud2 when observed" .-> debug
+  input --> filter1 --> filter2 --> output
 
   classDef ros fill:#e8f3ff,stroke:#2f6f9f,stroke-width:1.5px,color:#102a43
   classDef convert fill:#fff2cc,stroke:#b7791f,stroke-width:1.5px,color:#3d2c00
-  classDef adapter fill:#e6fffa,stroke:#2c7a7b,stroke-width:1.5px,color:#123b3c
-  classDef filter fill:#edf2ff,stroke:#4c51bf,stroke-width:2px,color:#1a202c
-  classDef shm fill:#f3e8ff,stroke:#805ad5,stroke-width:1.5px,color:#2d1b69
-  classDef debug fill:#f7fafc,stroke:#718096,stroke-dasharray: 5 3,color:#1a202c
 ```
 
 Those conversions make each classic node easy to connect on the ROS graph, but
 they are not the data path most algorithms want. This framework keeps the
 ROS-compatible topic boundary while letting filters operate on the processing
 type directly.
+
+```mermaid
+flowchart LR
+  input["/points<br/><small>PointCloud2</small>"]:::ros
+  output["/filtered_points<br/><small>PointCloud2</small>"]:::ros
+  debug["RViz / rosbag / external ROS nodes<br/><small>normal ROS compatibility</small>"]:::debug
+
+  subgraph process["one component-container process"]
+    direction LR
+    adapter_in["type adapter<br/><small>convert at ROS boundary</small>"]:::adapter
+    f1["filter 1 callback<br/><small>owns unique_ptr&lt;PCL cloud&gt;</small>"]:::filter
+    f2["filter 2 callback<br/><small>owns unique_ptr&lt;PCL cloud&gt;</small>"]:::filter
+    adapter_out["type adapter<br/><small>convert at ROS boundary</small>"]:::adapter
+    shm[("component_shm<br/><small>shared_ptr maps, caches, calibration</small>")]:::shm
+
+    adapter_in --> f1
+    f1 == "intra-process unique_ptr move" ==> f2
+    f2 --> adapter_out
+    shm -. "remapped shared keys" .-> f1
+    shm -. "remapped shared keys" .-> f2
+  end
+
+  input --> adapter_in
+  adapter_out --> output
+  output -. "PointCloud2 when observed" .-> debug
+
+  classDef ros fill:#e8f3ff,stroke:#2f6f9f,stroke-width:1.5px,color:#102a43
+  classDef adapter fill:#e6fffa,stroke:#2c7a7b,stroke-width:1.5px,color:#123b3c
+  classDef filter fill:#edf2ff,stroke:#4c51bf,stroke-width:2px,color:#1a202c
+  classDef shm fill:#f3e8ff,stroke:#805ad5,stroke-width:1.5px,color:#2d1b69
+  classDef debug fill:#f7fafc,stroke:#718096,stroke-dasharray: 5 3,color:#1a202c
+```
 
 The key pieces are:
 
