@@ -38,10 +38,10 @@ every step:
 
 ```mermaid
 flowchart TB
-  input[/ROS in/]
-  filter1[filter 1]
-  filter2[filter 2]
-  output[/ROS out/]
+  input[/ROS topic<br/>PointCloud2/]
+  filter1["filter 1<br/>convert to PCL<br/>process<br/>convert to ROS"]
+  filter2["filter 2<br/>convert to PCL<br/>process<br/>convert to ROS"]
+  output[/ROS topic<br/>PointCloud2/]
 
   input --> filter1 --> filter2 --> output
 
@@ -58,20 +58,20 @@ component container, filters exchange the processing type directly:
 
 ```mermaid
 flowchart TB
-  input[/ROS in/]
-  output[/ROS out/]
-  debug[ROS tools]
+  input[/ROS topic<br/>PointCloud2/]
+  output[/ROS topic<br/>PointCloud2/]
+  debug[RViz / rosbag<br/>external ROS nodes]
 
   subgraph process["component container process"]
     direction TB
-    adapter_in[adapter]
-    f1[filter 1]
-    f2[filter 2]
-    adapter_out[adapter]
-    shm[(component_shm)]
+    adapter_in["type adapter<br/>ROS -> PCL"]
+    f1["filter 1 callback<br/>owns unique_ptr"]
+    f2["filter 2 callback<br/>owns unique_ptr"]
+    adapter_out["type adapter<br/>PCL -> ROS"]
+    shm[(component_shm<br/>shared_ptr state)]
 
     adapter_in --> f1
-    f1 -->|unique_ptr| f2
+    f1 -->|intra-process unique_ptr| f2
     f2 --> adapter_out
     shm -.->|shared_ptr| f1
     shm -.->|shared_ptr| f2
@@ -79,7 +79,7 @@ flowchart TB
 
   input --> adapter_in
   adapter_out --> output
-  output -.->|observe| debug
+  output -.->|normal ROS message| debug
 
   classDef default fill:#f8fafc,stroke:#64748b,color:#0f172a
 ```
